@@ -21,6 +21,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
+          cache-dependency-path: requirements-dev.txt
       - name: Install test dependencies
         run: pip install -r requirements-dev.txt
       - name: Run Python tests
@@ -37,6 +38,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
+          cache-dependency-path: requirements-dev.txt
       - name: Install test dependencies
         run: pip install -r requirements-dev.txt
       - name: Build app image
