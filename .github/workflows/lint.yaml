@@ -1,0 +1,24 @@
+name: Home Assistant app lint
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  app-lint:
+    name: App lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+      - name: Lint Home Assistant app
+        uses: frenck/action-addon-linter@v2.21
+        with:
+          path: ./hauzer_utility_exporter

@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Validate version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+      - name: Match tag to app manifest
+        id: version
+        run: |
+          tag_version=${GITHUB_REF_NAME#v}
+          manifest_version=$(awk -F'"' '/^version:/ { print $2 }' hauzer_utility_exporter/config.yaml)
+          test -n "$manifest_version"
+          test "$tag_version" = "$manifest_version"
+          echo "version=$manifest_version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build and publish
+    needs: version
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    uses: ./.github/workflows/build-app.yaml
+    with:
+      app: hauzer_utility_exporter
+      publish: true
+    secrets: inherit
+
+  sign:
+    name: Sign published image
+    needs:
+      - version
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign multi-architecture image
+        env:
+          IMAGE: ghcr.io/hardimpactdev/hauzer-home-assistant-os
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          digest=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          test -n "$digest"
+          cosign sign --yes --recursive "${IMAGE}@${digest}"

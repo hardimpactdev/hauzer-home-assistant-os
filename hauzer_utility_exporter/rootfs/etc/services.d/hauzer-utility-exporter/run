@@ -1,0 +1,4 @@
+#!/usr/bin/with-contenv bashio
+
+export PYTHONPATH=/usr/lib
+exec python3 -m hauzer_utility_exporter

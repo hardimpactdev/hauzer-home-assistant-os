@@ -1,0 +1,28 @@
+configuration:
+  hauzer_url:
+    name: Hauzer-URL
+    description: "Geavanceerd: importendpoint voor nutsverbruik. Productiegebruikers behouden de standaard."
+  hauzer_token:
+    name: Hauzer-token
+    description: Gegenereerd token voor deze Home Assistant-bron.
+  hauzer_host_ip:
+    name: IP-adres van Hauzer-host
+    description: "Geavanceerd: optionele hostoverride voor ontwikkelomgevingen."
+  verify_tls:
+    name: TLS verifiëren
+    description: "Geavanceerd: controleer het servercertificaat van Hauzer. Laat dit aan in productie."
+  initial_backfill_hours:
+    name: Uren eerste aanvulling
+    description: "Geavanceerd: afgeronde historie voor de eerste uitvoering. Standaard zeven dagen."
+  electricity_consumption_statistics:
+    name: Statistieken elektriciteitsverbruik
+    description: "Geavanceerd: optionele kommagescheiden statistiek-ID's die automatische detectie vervangen."
+  electricity_grid_export_statistics:
+    name: Statistieken teruglevering
+    description: "Geavanceerd: optionele kommagescheiden statistiek-ID's die automatische detectie vervangen."
+  gas_consumption_statistics:
+    name: Statistieken gasverbruik
+    description: "Geavanceerd: optionele kommagescheiden statistiek-ID's die automatische detectie vervangen."
+  water_consumption_statistics:
+    name: Statistieken waterverbruik
+    description: "Geavanceerd: optionele kommagescheiden statistiek-ID's die automatische detectie vervangen."

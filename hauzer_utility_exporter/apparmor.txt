@@ -1,0 +1,34 @@
+#include <tunables/global>
+
+profile hauzer_utility_exporter flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  file,
+  network inet stream,
+  network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+  signal (send) set=(kill,term,int,hup,cont),
+  signal (receive),
+
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  /usr/lib/bashio/** ix,
+  /usr/lib/hauzer_utility_exporter/** r,
+  /usr/lib/python3*/** rix,
+  /etc/ssl/** r,
+  /etc/resolv.conf r,
+  /etc/hosts rw,
+  /tmp/** rwk,
+  /data/** rw,
+}

@@ -1,0 +1,32 @@
+name: Hauzer Utility Exporter
+version: "0.1.0"
+slug: hauzer_utility_exporter
+description: Push Home Assistant utility statistics to Hauzer.
+url: https://hauzer.app
+image: ghcr.io/hardimpactdev/hauzer-home-assistant-os
+arch:
+  - aarch64
+  - amd64
+init: false
+stage: experimental
+homeassistant_api: true
+options:
+  hauzer_url: https://hauzer.app/api/utility-imports
+  hauzer_token: ""
+  hauzer_host_ip: ""
+  verify_tls: true
+  initial_backfill_hours: 168
+  electricity_consumption_statistics: ""
+  electricity_grid_export_statistics: ""
+  gas_consumption_statistics: ""
+  water_consumption_statistics: ""
+schema:
+  hauzer_url: url
+  hauzer_token: password
+  hauzer_host_ip: str?
+  verify_tls: bool
+  initial_backfill_hours: int(1,720)
+  electricity_consumption_statistics: str?
+  electricity_grid_export_statistics: str?
+  gas_consumption_statistics: str?
+  water_consumption_statistics: str?

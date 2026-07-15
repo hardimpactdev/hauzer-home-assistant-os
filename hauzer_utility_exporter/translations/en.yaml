@@ -1,0 +1,28 @@
+configuration:
+  hauzer_url:
+    name: Hauzer URL
+    description: "Advanced: utility import endpoint. Production users keep the default."
+  hauzer_token:
+    name: Hauzer token
+    description: Generated token for this Home Assistant source.
+  hauzer_host_ip:
+    name: Hauzer host IP
+    description: "Advanced: optional host override for development environments."
+  verify_tls:
+    name: Verify TLS
+    description: "Advanced: verify the Hauzer server certificate. Keep enabled in production."
+  initial_backfill_hours:
+    name: Initial backfill hours
+    description: "Advanced: completed history to inspect on the first run. Defaults to seven days."
+  electricity_consumption_statistics:
+    name: Electricity consumption statistics
+    description: "Advanced: optional comma-separated statistic IDs overriding automatic discovery."
+  electricity_grid_export_statistics:
+    name: Electricity grid export statistics
+    description: "Advanced: optional comma-separated statistic IDs overriding automatic discovery."
+  gas_consumption_statistics:
+    name: Gas consumption statistics
+    description: "Advanced: optional comma-separated statistic IDs overriding automatic discovery."
+  water_consumption_statistics:
+    name: Water consumption statistics
+    description: "Advanced: optional comma-separated statistic IDs overriding automatic discovery."

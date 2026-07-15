@@ -1,0 +1,59 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    name: Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+      - name: Set up Python
+        uses: actions/setup-python@v6.3.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install test dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run Python tests
+        run: PYTHONPATH=hauzer_utility_exporter/rootfs/usr/lib python -m unittest discover -s tests -v
+
+  container-smoke:
+    name: Container smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+      - name: Set up Python
+        uses: actions/setup-python@v6.3.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install test dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Build app image
+        run: docker build --build-arg BUILD_VERSION=0.1.0 -t hauzer-home-assistant-os:test hauzer_utility_exporter
+      - name: Run container smoke test
+        run: HAUZER_TEST_IMAGE=hauzer-home-assistant-os:test PYTHONPATH=hauzer_utility_exporter/rootfs/usr/lib python -m unittest tests.test_container_smoke -v
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Scan Git history
+        run: >-
+          docker run --rm -v "$PWD:/repo"
+          zricethezav/gitleaks@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854
+          git /repo --redact --no-banner
