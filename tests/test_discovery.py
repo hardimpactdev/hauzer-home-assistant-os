@@ -89,6 +89,170 @@ class DiscoveryTest(unittest.TestCase):
         self.assertEqual(result.mappings[0].metric, Metric.WATER_CONSUMPTION)
         self.assertEqual(result.mappings[0].origin, "automatic")
 
+    def test_p1_import_and_export_are_directionally_discovered(self) -> None:
+        result = discover_utilities(
+            app_config(),
+            {"energy_sources": []},
+            metadata(
+                ("sensor.p1_meter_energy_import", "kWh", True),
+                ("sensor.p1_meter_energy_export", "kWh", True),
+            ),
+            [
+                {
+                    "entity_id": "sensor.p1_meter_energy_import",
+                    "attributes": {
+                        "device_class": "energy",
+                        "state_class": "total_increasing",
+                    },
+                },
+                {
+                    "entity_id": "sensor.p1_meter_energy_export",
+                    "attributes": {
+                        "device_class": "energy",
+                        "state_class": "total_increasing",
+                    },
+                },
+            ],
+        )
+
+        self.assertEqual(
+            {(mapping.metric, mapping.statistic_id) for mapping in result.mappings},
+            {
+                (
+                    Metric.ELECTRICITY_CONSUMPTION,
+                    "sensor.p1_meter_energy_import",
+                ),
+                (
+                    Metric.ELECTRICITY_GRID_EXPORT,
+                    "sensor.p1_meter_energy_export",
+                ),
+            },
+        )
+
+    def test_p1_export_under_a_solar_energy_source_uses_safe_automatic_discovery(self) -> None:
+        result = discover_utilities(
+            app_config(),
+            {
+                "energy_sources": [
+                    {
+                        "type": "solar",
+                        "stat_energy_from": "sensor.p1_meter_energy_export",
+                    }
+                ]
+            },
+            metadata(("sensor.p1_meter_energy_export", "kWh", True)),
+            [
+                {
+                    "entity_id": "sensor.p1_meter_energy_export",
+                    "attributes": {
+                        "device_class": "energy",
+                        "state_class": "total_increasing",
+                    },
+                }
+            ],
+        )
+
+        self.assertEqual(
+            [
+                (mapping.metric, mapping.statistic_id, mapping.origin)
+                for mapping in result.mappings
+            ],
+            [
+                (
+                    Metric.ELECTRICITY_GRID_EXPORT,
+                    "sensor.p1_meter_energy_export",
+                    "automatic",
+                )
+            ],
+        )
+
+    def test_generic_solar_production_is_not_grid_export(self) -> None:
+        result = discover_utilities(
+            app_config(),
+            {"energy_sources": []},
+            metadata(("sensor.solar_production", "kWh", True)),
+            [
+                {
+                    "entity_id": "sensor.solar_production",
+                    "attributes": {
+                        "device_class": "energy",
+                        "state_class": "total_increasing",
+                    },
+                }
+            ],
+        )
+
+        self.assertNotIn(
+            Metric.ELECTRICITY_GRID_EXPORT,
+            {mapping.metric for mapping in result.mappings},
+        )
+
+    def test_neutral_grid_energy_is_not_guessed_as_both_directions(self) -> None:
+        result = discover_utilities(
+            app_config(),
+            {"energy_sources": []},
+            metadata(("sensor.grid_energy", "kWh", True)),
+            [
+                {
+                    "entity_id": "sensor.grid_energy",
+                    "attributes": {
+                        "device_class": "energy",
+                        "state_class": "total_increasing",
+                    },
+                }
+            ],
+        )
+
+        self.assertFalse(
+            {
+                mapping.metric
+                for mapping in result.mappings
+                if mapping.metric
+                in {
+                    Metric.ELECTRICITY_CONSUMPTION,
+                    Metric.ELECTRICITY_GRID_EXPORT,
+                }
+            }
+        )
+
+    def test_ambiguous_directional_exports_require_an_override(self) -> None:
+        result = discover_utilities(
+            app_config(),
+            {"energy_sources": []},
+            metadata(
+                ("sensor.p1_meter_energy_export", "kWh", True),
+                ("sensor.smart_meter_energy_export", "kWh", True),
+            ),
+            [
+                {
+                    "entity_id": "sensor.p1_meter_energy_export",
+                    "attributes": {
+                        "device_class": "energy",
+                        "state_class": "total_increasing",
+                    },
+                },
+                {
+                    "entity_id": "sensor.smart_meter_energy_export",
+                    "attributes": {
+                        "device_class": "energy",
+                        "state_class": "total_increasing",
+                    },
+                },
+            ],
+        )
+
+        self.assertNotIn(
+            Metric.ELECTRICITY_GRID_EXPORT,
+            {mapping.metric for mapping in result.mappings},
+        )
+        self.assertEqual(
+            result.ambiguous[Metric.ELECTRICITY_GRID_EXPORT],
+            (
+                "sensor.p1_meter_energy_export",
+                "sensor.smart_meter_energy_export",
+            ),
+        )
+
     def test_instantaneous_and_non_utility_statistics_are_excluded(self) -> None:
         result = discover_utilities(
             app_config(),

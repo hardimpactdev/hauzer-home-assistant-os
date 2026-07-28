@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Optional
 
 from hauzer_utility_exporter.configuration import AppConfig, Metric
 
@@ -31,6 +31,18 @@ EXCLUDED_TERMS = {
     "tariff",
     "washer",
 }
+ELECTRICITY_IMPORT_TERMS = (
+    "consumption",
+    "delivered",
+    "from_grid",
+    "import",
+)
+ELECTRICITY_EXPORT_TERMS = (
+    "export",
+    "production_returned",
+    "returned",
+    "to_grid",
+)
 
 
 def discover_utilities(
@@ -181,6 +193,11 @@ def _fallback_candidates(
             continue
 
         score = 3
+        direction_score = _electricity_direction_score(metric, normalized_id)
+        if direction_score is None:
+            continue
+        score += direction_score
+
         attributes = _attributes(states_by_id.get(statistic_id, {}))
         state_class = attributes.get("state_class")
         device_class = attributes.get("device_class")
@@ -195,6 +212,23 @@ def _fallback_candidates(
             candidates.append((score, statistic_id))
 
     return sorted(candidates, key=lambda candidate: (-candidate[0], candidate[1]))
+
+
+def _electricity_direction_score(metric: Metric, statistic_id: str) -> Optional[int]:
+    import_match = any(term in statistic_id for term in ELECTRICITY_IMPORT_TERMS)
+    export_match = any(term in statistic_id for term in ELECTRICITY_EXPORT_TERMS)
+
+    if metric is Metric.ELECTRICITY_CONSUMPTION:
+        if export_match or not import_match:
+            return None
+        return 3
+
+    if metric is Metric.ELECTRICITY_GRID_EXPORT:
+        if import_match or not export_match:
+            return None
+        return 3
+
+    return 0
 
 
 def _attributes(state: Mapping[str, object]) -> Mapping[str, object]:
