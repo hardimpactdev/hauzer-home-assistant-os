@@ -103,6 +103,7 @@ class HauzerClient:
             "Accept": "application/json",
             "Authorization": f"Bearer {self._config.hauzer_token}",
             "Content-Type": "application/json",
+            "User-Agent": f"Hauzer-Utility-Exporter/{self._exporter_version}",
             "X-Hauzer-Exporter-Version": self._exporter_version,
         }
 
