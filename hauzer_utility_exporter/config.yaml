@@ -1,5 +1,5 @@
 name: Hauzer Utility Exporter
-version: "0.1.0"
+version: "0.1.1"
 slug: hauzer_utility_exporter
 description: Push Home Assistant utility statistics to Hauzer.
 url: https://hauzer.app

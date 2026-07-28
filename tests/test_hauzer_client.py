@@ -108,7 +108,7 @@ class HauzerClientTest(unittest.TestCase):
         self.assertNotIn("network unavailable", str(raised.exception))
         self.assertNotIn("hsr_", str(raised.exception))
 
-    def test_requests_include_the_exporter_version(self) -> None:
+    def test_requests_include_the_exporter_identity(self) -> None:
         requests = []
         client = HauzerClient(
             app_config(),
@@ -119,6 +119,7 @@ class HauzerClientTest(unittest.TestCase):
         client.post_batch([])
 
         self.assertEqual(requests[0][1]["X-Hauzer-Exporter-Version"], "0.1.0")
+        self.assertEqual(requests[0][1]["User-Agent"], "Hauzer-Utility-Exporter/0.1.0")
 
     def test_rate_limit_retry_after_overrides_default_delays(self) -> None:
         delays = []
