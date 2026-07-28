@@ -37,6 +37,10 @@ def mapping(metric: Metric = Metric.ELECTRICITY_CONSUMPTION) -> UtilityMapping:
     return UtilityMapping(metric, f"sensor.{metric.value}", unit, "energy_dashboard")
 
 
+def mapping_key(item: UtilityMapping) -> str:
+    return f"{item.metric.value}:{item.statistic_id}"
+
+
 def rows(count: int, start: datetime = WINDOW_START - timedelta(minutes=5)) -> list[dict[str, object]]:
     return [
         {
@@ -85,14 +89,162 @@ class FakeHauzer:
         return outcome
 
 
-def write_state(path: Path, window_end: datetime = WINDOW_START) -> None:
+def write_state(
+    path: Path,
+    window_end: datetime = WINDOW_START,
+    mapping_keys: tuple[str, ...] = (),
+) -> None:
     path.write_text(
-        json.dumps({"window_end": window_end.isoformat(), "last_success_at": None}),
+        json.dumps(
+            {
+                "window_end": window_end.isoformat(),
+                "last_success_at": None,
+                "backfill_hours": 24,
+                "mapping_keys": list(mapping_keys),
+            }
+        ),
         encoding="utf-8",
     )
 
 
 class ImportServiceTest(unittest.TestCase):
+    def test_changed_mapping_set_rewinds_to_the_bounded_backfill_boundary(self) -> None:
+        electricity = mapping()
+        backfill_boundary = datetime(2026, 7, 12, 12, 5, tzinfo=timezone.utc)
+        home_assistant = FakeHomeAssistant(
+            {
+                electricity.statistic_id: rows(
+                    289,
+                    backfill_boundary - timedelta(minutes=5),
+                )
+            }
+        )
+
+        with TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            write_state(
+                state_path,
+                mapping_keys=("electricity_consumption:sensor.previous",),
+            )
+            service = ImportService(
+                app_config(),
+                home_assistant,
+                FakeHauzer(),
+                state_path,
+                discover=lambda *args: DiscoveryResult((electricity,), {}),
+            )
+
+            result = service.run_cycle(NOW)
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            home_assistant.period_calls[0][1],
+            datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc),
+        )
+
+    def test_unchanged_mapping_set_resumes_at_the_existing_cursor(self) -> None:
+        electricity = mapping()
+        home_assistant = FakeHomeAssistant({electricity.statistic_id: rows(3)})
+
+        with TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            write_state(state_path, mapping_keys=(mapping_key(electricity),))
+            service = ImportService(
+                app_config(),
+                home_assistant,
+                FakeHauzer(),
+                state_path,
+                discover=lambda *args: DiscoveryResult((electricity,), {}),
+            )
+
+            result = service.run_cycle(NOW)
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            home_assistant.period_calls[0][1],
+            WINDOW_START - timedelta(minutes=5),
+        )
+
+    def test_failed_mapping_replay_keeps_the_previous_cursor_and_mapping_keys(self) -> None:
+        electricity = mapping()
+        previous_mapping_keys = ("electricity_consumption:sensor.previous",)
+        backfill_boundary = datetime(2026, 7, 12, 12, 5, tzinfo=timezone.utc)
+        home_assistant = FakeHomeAssistant(
+            {
+                electricity.statistic_id: rows(
+                    252,
+                    backfill_boundary - timedelta(minutes=5),
+                )
+            }
+        )
+        failure = RetryableHauzerError("Hauzer is temporarily unavailable.")
+
+        with TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            write_state(state_path, mapping_keys=previous_mapping_keys)
+            service = ImportService(
+                app_config(),
+                home_assistant,
+                FakeHauzer([ImportResult(250, 250, 0), failure]),
+                state_path,
+                discover=lambda *args: DiscoveryResult((electricity,), {}),
+            )
+
+            with self.assertRaises(RetryableHauzerError):
+                service.run_cycle(NOW)
+
+            stored = json.loads(state_path.read_text())
+
+        self.assertEqual(stored["window_end"], WINDOW_START.isoformat())
+        self.assertEqual(stored["mapping_keys"], list(previous_mapping_keys))
+
+    def test_legacy_state_replays_once_then_resumes_incrementally(self) -> None:
+        electricity = mapping()
+        backfill_boundary = datetime(2026, 7, 12, 12, 5, tzinfo=timezone.utc)
+        home_assistant = FakeHomeAssistant(
+            {
+                electricity.statistic_id: rows(
+                    290,
+                    backfill_boundary - timedelta(minutes=5),
+                )
+            }
+        )
+
+        with TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "window_end": WINDOW_START.isoformat(),
+                        "last_success_at": None,
+                        "backfill_hours": 24,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            service = ImportService(
+                app_config(),
+                home_assistant,
+                FakeHauzer(),
+                state_path,
+                discover=lambda *args: DiscoveryResult((electricity,), {}),
+            )
+
+            first_result = service.run_cycle(NOW)
+            second_result = service.run_cycle(NOW + timedelta(minutes=5))
+            stored = json.loads(state_path.read_text())
+
+        self.assertTrue(first_result.success)
+        self.assertTrue(second_result.success)
+        self.assertEqual(
+            [call[1] for call in home_assistant.period_calls],
+            [
+                backfill_boundary - timedelta(minutes=5),
+                datetime(2026, 7, 13, 12, 0, tzinfo=timezone.utc),
+            ],
+        )
+        self.assertEqual(stored["mapping_keys"], [mapping_key(electricity)])
+
     def test_no_mappings_is_a_successful_noop_without_cursor_advancement(self) -> None:
         with TemporaryDirectory() as directory:
             state_path = Path(directory) / "state.json"

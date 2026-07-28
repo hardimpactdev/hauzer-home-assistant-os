@@ -74,14 +74,28 @@ class ImportService:
             ),
         )
 
-        if window_end <= state.window_end:
+        mapping_keys = tuple(
+            sorted(
+                f"{mapping.metric.value}:{mapping.statistic_id}"
+                for mapping in discovery.mappings
+            )
+        )
+        window_start = state.window_end
+        if mapping_keys != state.mapping_keys:
+            backfill_boundary = (
+                floor_to_five_minutes(now)
+                - timedelta(hours=self._config.initial_backfill_hours)
+            )
+            window_start = min(window_start, backfill_boundary)
+
+        if window_end <= window_start:
             self._logger.info("No completed utility interval is ready.")
             return CycleResult(True, len(discovery.mappings), 0, 0, 0, 0)
 
         statistic_ids = tuple(mapping.statistic_id for mapping in discovery.mappings)
         statistics = self._home_assistant.statistics_during_period(
             statistic_ids,
-            state.window_end - timedelta(minutes=5),
+            window_start - timedelta(minutes=5),
             window_end,
         )
         readings: list[dict[str, object]] = []
@@ -90,7 +104,7 @@ class ImportService:
                 build_readings(
                     mapping,
                     statistics.get(mapping.statistic_id, []),
-                    state.window_end,
+                    window_start,
                     window_end,
                 )
             )
@@ -123,6 +137,7 @@ class ImportService:
             window_end=window_end,
             last_success_at=now.astimezone(timezone.utc),
             backfill_hours=state.backfill_hours,
+            mapping_keys=mapping_keys,
         )
         self._state_saver(completed_state, self._state_path)
         self._logger.info(
