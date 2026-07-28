@@ -198,6 +198,41 @@ class ImportServiceTest(unittest.TestCase):
         self.assertEqual(stored["window_end"], WINDOW_START.isoformat())
         self.assertEqual(stored["mapping_keys"], list(previous_mapping_keys))
 
+    def test_mapping_replay_with_partial_statistics_keeps_the_previous_state(self) -> None:
+        electricity = mapping()
+        grid_export = mapping(Metric.ELECTRICITY_GRID_EXPORT)
+        previous_mapping_keys = (mapping_key(electricity),)
+        home_assistant = FakeHomeAssistant(
+            {
+                electricity.statistic_id: rows(3),
+                grid_export.statistic_id: [],
+            }
+        )
+        hauzer = FakeHauzer()
+
+        with TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            write_state(state_path, mapping_keys=previous_mapping_keys)
+            service = ImportService(
+                app_config(),
+                home_assistant,
+                hauzer,
+                state_path,
+                discover=lambda *args: DiscoveryResult(
+                    (electricity, grid_export),
+                    {},
+                ),
+            )
+
+            result = service.run_cycle(NOW)
+            stored = json.loads(state_path.read_text())
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.reading_count, 0)
+        self.assertEqual(hauzer.batches, [])
+        self.assertEqual(stored["window_end"], WINDOW_START.isoformat())
+        self.assertEqual(stored["mapping_keys"], list(previous_mapping_keys))
+
     def test_legacy_state_replays_once_then_resumes_incrementally(self) -> None:
         electricity = mapping()
         backfill_boundary = datetime(2026, 7, 12, 12, 5, tzinfo=timezone.utc)

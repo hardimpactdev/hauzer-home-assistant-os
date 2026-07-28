@@ -81,7 +81,8 @@ class ImportService:
             )
         )
         window_start = state.window_end
-        if mapping_keys != state.mapping_keys:
+        mapping_changed = mapping_keys != state.mapping_keys
+        if mapping_changed:
             backfill_boundary = (
                 floor_to_five_minutes(now)
                 - timedelta(hours=self._config.initial_backfill_hours)
@@ -100,14 +101,21 @@ class ImportService:
         )
         readings: list[dict[str, object]] = []
         for mapping in discovery.mappings:
-            readings.extend(
-                build_readings(
-                    mapping,
-                    statistics.get(mapping.statistic_id, []),
-                    window_start,
-                    window_end,
-                )
+            mapping_readings = build_readings(
+                mapping,
+                statistics.get(mapping.statistic_id, []),
+                window_start,
+                window_end,
             )
+            if mapping_changed and not mapping_readings:
+                self._logger.warning(
+                    "No recorder statistics returned for %s during mapping replay; "
+                    "cursor and mappings remain unchanged.",
+                    mapping.statistic_id,
+                )
+                return CycleResult(True, len(discovery.mappings), 0, 0, 0, 0)
+
+            readings.extend(mapping_readings)
 
         readings.sort(
             key=lambda item: (
