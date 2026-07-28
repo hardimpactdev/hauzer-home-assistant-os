@@ -22,4 +22,5 @@ LABEL \
     org.opencontainers.image.description="Push Home Assistant utility statistics to Hauzer" \
     org.opencontainers.image.source="https://github.com/hardimpactdev/hauzer-home-assistant-os" \
     org.opencontainers.image.url="https://hauzer.app" \
+    org.opencontainers.image.version="${BUILD_VERSION}" \
     org.opencontainers.image.licenses="MIT"

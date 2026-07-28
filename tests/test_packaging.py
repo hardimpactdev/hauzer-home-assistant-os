@@ -47,6 +47,7 @@ class PackagingTest(unittest.TestCase):
         self.assertIn('io.hass.type="app"', dockerfile)
         self.assertIn("io.hass.version", dockerfile)
         self.assertIn("io.hass.arch", dockerfile)
+        self.assertIn('org.opencontainers.image.version="${BUILD_VERSION}"', dockerfile)
 
     def test_apparmor_allows_only_required_runtime_surfaces(self) -> None:
         profile = (APP / "apparmor.txt").read_text()
