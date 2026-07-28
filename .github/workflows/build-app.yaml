@@ -38,21 +38,20 @@ jobs:
           path: ./${{ inputs.app }}
       - name: Normalize app information
         id: normalize
-        env:
-          DESCRIPTION: ${{ steps.info.outputs.description }}
-          IMAGE: ${{ steps.info.outputs.image }}
-          NAME: ${{ steps.info.outputs.name }}
-          URL: ${{ steps.info.outputs.url }}
         run: |
+          image=${{ steps.info.outputs.image }}
           version=${{ steps.info.outputs.version }}
+          name=${{ steps.info.outputs.name }}
+          description=${{ steps.info.outputs.description }}
+          url=${{ steps.info.outputs.url }}
           {
-            echo "image_name=${IMAGE##*/}"
-            echo "registry_prefix=${IMAGE%/*}"
+            echo "image_name=${image##*/}"
+            echo "registry_prefix=${image%/*}"
             echo "version=$version"
-            echo "name=$NAME"
-            echo "description=$DESCRIPTION"
-            if [[ -n "$URL" && "$URL" != "null" ]]; then
-              echo "url=$URL"
+            echo "name=$name"
+            echo "description=$description"
+            if [[ -n "$url" && "$url" != "null" ]]; then
+              echo "url=$url"
             fi
           } >> "$GITHUB_OUTPUT"
       - name: Prepare build matrix
