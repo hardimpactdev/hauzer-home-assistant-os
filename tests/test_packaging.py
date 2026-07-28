@@ -49,6 +49,13 @@ class PackagingTest(unittest.TestCase):
         self.assertIn("io.hass.arch", dockerfile)
         self.assertIn('org.opencontainers.image.version="${BUILD_VERSION}"', dockerfile)
 
+    def test_development_build_examples_match_manifest_version(self) -> None:
+        config = yaml.safe_load((APP / "config.yaml").read_text())
+        build_argument = f"BUILD_VERSION={config['version']}"
+
+        for path in (ROOT / "README.md", ROOT / "CONTRIBUTING.md"):
+            self.assertIn(build_argument, path.read_text(), str(path.relative_to(ROOT)))
+
     def test_apparmor_allows_only_required_runtime_surfaces(self) -> None:
         profile = (APP / "apparmor.txt").read_text()
         config = yaml.safe_load((APP / "config.yaml").read_text())
