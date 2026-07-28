@@ -194,6 +194,7 @@ class PackagingTest(unittest.TestCase):
             "f4ca6f671bd429efb108c0f2fa0ae8af0215986c",
             build_text,
         )
+        self.assertIn("version=${{ steps.info.outputs.version }}", build_text)
         self.assertIn(
             "home-assistant/builder/actions/prepare-multi-arch-matrix@2026.06.0",
             build_text,

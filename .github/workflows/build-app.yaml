@@ -43,12 +43,12 @@ jobs:
           IMAGE: ${{ steps.info.outputs.image }}
           NAME: ${{ steps.info.outputs.name }}
           URL: ${{ steps.info.outputs.url }}
-          VERSION: ${{ steps.info.outputs.version }}
         run: |
+          version=${{ steps.info.outputs.version }}
           {
             echo "image_name=${IMAGE##*/}"
             echo "registry_prefix=${IMAGE%/*}"
-            echo "version=$VERSION"
+            echo "version=$version"
             echo "name=$NAME"
             echo "description=$DESCRIPTION"
             if [[ -n "$URL" && "$URL" != "null" ]]; then
