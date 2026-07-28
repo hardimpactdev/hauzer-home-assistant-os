@@ -42,7 +42,7 @@ jobs:
       - name: Install test dependencies
         run: pip install -r requirements-dev.txt
       - name: Build app image
-        run: docker build --build-arg BUILD_VERSION=0.1.1 -t hauzer-home-assistant-os:test hauzer_utility_exporter
+        run: docker build --build-arg BUILD_VERSION=0.1.2 -t hauzer-home-assistant-os:test hauzer_utility_exporter
       - name: Run container smoke test
         run: HAUZER_TEST_IMAGE=hauzer-home-assistant-os:test PYTHONPATH=hauzer_utility_exporter/rootfs/usr/lib python -m unittest tests.test_container_smoke -v
 
