@@ -17,6 +17,7 @@ class ImportState:
     window_end: datetime
     last_success_at: Optional[datetime]
     backfill_hours: int
+    mapping_keys: tuple[str, ...] = ()
 
     @classmethod
     def load(
@@ -42,6 +43,13 @@ class ImportState:
             backfill_hours = raw.get("backfill_hours", 24)
             if isinstance(backfill_hours, bool) or not isinstance(backfill_hours, int) or backfill_hours < 1:
                 raise ValueError
+            raw_mapping_keys = raw.get("mapping_keys", [])
+            if not isinstance(raw_mapping_keys, list) or any(
+                not isinstance(mapping_key, str) or not mapping_key
+                for mapping_key in raw_mapping_keys
+            ):
+                raise ValueError
+            mapping_keys = tuple(sorted(set(raw_mapping_keys)))
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise StateError("The utility import cursor state is invalid.") from error
 
@@ -53,6 +61,7 @@ class ImportState:
             window_end=window_end,
             last_success_at=last_success_at,
             backfill_hours=max(backfill_hours, initial_backfill_hours),
+            mapping_keys=mapping_keys,
         )
 
     def save_atomic(self, path: Path) -> None:
@@ -66,6 +75,7 @@ class ImportState:
                 else self.last_success_at.astimezone(timezone.utc).isoformat()
             ),
             "backfill_hours": self.backfill_hours,
+            "mapping_keys": list(self.mapping_keys),
         }
 
         with temporary_path.open("w", encoding="utf-8") as stream:

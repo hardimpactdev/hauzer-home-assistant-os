@@ -18,6 +18,7 @@ class ImportStateTest(unittest.TestCase):
             datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc),
         )
         self.assertIsNone(state.last_success_at)
+        self.assertEqual(state.mapping_keys, ())
 
     def test_legacy_cursor_rewinds_to_an_increased_backfill_boundary(self) -> None:
         with TemporaryDirectory() as directory:
@@ -42,6 +43,39 @@ class ImportStateTest(unittest.TestCase):
             datetime(2026, 7, 6, 14, 0, tzinfo=timezone.utc),
         )
         self.assertEqual(state.backfill_hours, 168)
+        self.assertEqual(state.mapping_keys, ())
+
+    def test_mapping_keys_load_as_a_sorted_unique_tuple(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "window_end": "2026-07-13T12:00:00+00:00",
+                        "last_success_at": None,
+                        "backfill_hours": 24,
+                        "mapping_keys": [
+                            "electricity_grid_export:sensor.p1_meter_energy_export",
+                            "electricity_consumption:sensor.p1_meter_energy_import",
+                            "electricity_grid_export:sensor.p1_meter_energy_export",
+                        ],
+                    }
+                )
+            )
+
+            state = ImportState.load(
+                path,
+                datetime(2026, 7, 13, 14, 0, tzinfo=timezone.utc),
+                24,
+            )
+
+        self.assertEqual(
+            state.mapping_keys,
+            (
+                "electricity_consumption:sensor.p1_meter_energy_import",
+                "electricity_grid_export:sensor.p1_meter_energy_export",
+            ),
+        )
 
     def test_applied_backfill_window_does_not_rewind_again(self) -> None:
         with TemporaryDirectory() as directory:
@@ -105,6 +139,38 @@ class ImportStateTest(unittest.TestCase):
 
         self.assertNotIn("private", str(raised.exception))
 
+    def test_malformed_mapping_keys_fail_safely(self) -> None:
+        malformed_mapping_keys = (
+            "electricity_consumption:sensor.p1_meter_energy_import",
+            [""],
+            [123],
+        )
+
+        for mapping_keys in malformed_mapping_keys:
+            with self.subTest(mapping_keys=mapping_keys):
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / "state.json"
+                    path.write_text(
+                        json.dumps(
+                            {
+                                "window_end": "2026-07-13T12:00:00+00:00",
+                                "last_success_at": None,
+                                "backfill_hours": 24,
+                                "mapping_keys": mapping_keys,
+                                "token": "private",
+                            }
+                        )
+                    )
+
+                    with self.assertRaisesRegex(StateError, "cursor state") as raised:
+                        ImportState.load(
+                            path,
+                            datetime(2026, 7, 13, 14, 0, tzinfo=timezone.utc),
+                            24,
+                        )
+
+                self.assertNotIn("private", str(raised.exception))
+
     def test_save_atomic_writes_valid_json_and_removes_temporary_file(self) -> None:
         with TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
@@ -112,6 +178,10 @@ class ImportStateTest(unittest.TestCase):
                 window_end=datetime(2026, 7, 13, 12, 0, tzinfo=timezone.utc),
                 last_success_at=datetime(2026, 7, 13, 12, 1, 12, tzinfo=timezone.utc),
                 backfill_hours=168,
+                mapping_keys=(
+                    "electricity_consumption:sensor.p1_meter_energy_import",
+                    "electricity_grid_export:sensor.p1_meter_energy_export",
+                ),
             )
 
             state.save_atomic(path)
@@ -122,6 +192,10 @@ class ImportStateTest(unittest.TestCase):
                     "window_end": "2026-07-13T12:00:00+00:00",
                     "last_success_at": "2026-07-13T12:01:12+00:00",
                     "backfill_hours": 168,
+                    "mapping_keys": [
+                        "electricity_consumption:sensor.p1_meter_energy_import",
+                        "electricity_grid_export:sensor.p1_meter_energy_export",
+                    ],
                 },
             )
             self.assertFalse(path.with_name("state.json.tmp").exists())
