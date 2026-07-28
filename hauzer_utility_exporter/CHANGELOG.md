@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Discover electricity import and grid export using safe directional signals.
+- Replay the configured backfill window when discovered utility mappings change.
+
 ## 0.1.1
 
 - Send an explicit exporter user agent so Cloudflare accepts production imports.

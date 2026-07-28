@@ -1,7 +1,7 @@
 FROM ghcr.io/home-assistant/base:3.23
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.1.1
+ARG BUILD_VERSION=0.1.2
 
 ENV HAUZER_EXPORTER_VERSION="${BUILD_VERSION}"
 
@@ -22,4 +22,5 @@ LABEL \
     org.opencontainers.image.description="Push Home Assistant utility statistics to Hauzer" \
     org.opencontainers.image.source="https://github.com/hardimpactdev/hauzer-home-assistant-os" \
     org.opencontainers.image.url="https://hauzer.app" \
+    org.opencontainers.image.version="${BUILD_VERSION}" \
     org.opencontainers.image.licenses="MIT"

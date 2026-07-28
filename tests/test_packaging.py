@@ -18,7 +18,7 @@ class PackagingTest(unittest.TestCase):
         self.assertEqual(repository["url"], "https://hauzer.app")
         self.assertEqual(repository["maintainer"], "Hard Impact <support@hauzer.app>")
         self.assertEqual(config["slug"], "hauzer_utility_exporter")
-        self.assertEqual(config["version"], "0.1.1")
+        self.assertEqual(config["version"], "0.1.2")
         self.assertEqual(config["url"], "https://hauzer.app")
         self.assertEqual(config["image"], "ghcr.io/hardimpactdev/hauzer-home-assistant-os")
         self.assertEqual(config["arch"], ["aarch64", "amd64"])
@@ -47,6 +47,14 @@ class PackagingTest(unittest.TestCase):
         self.assertIn('io.hass.type="app"', dockerfile)
         self.assertIn("io.hass.version", dockerfile)
         self.assertIn("io.hass.arch", dockerfile)
+        self.assertIn('org.opencontainers.image.version="${BUILD_VERSION}"', dockerfile)
+
+    def test_development_build_examples_match_manifest_version(self) -> None:
+        config = yaml.safe_load((APP / "config.yaml").read_text())
+        build_argument = f"BUILD_VERSION={config['version']}"
+
+        for path in (ROOT / "README.md", ROOT / "CONTRIBUTING.md"):
+            self.assertIn(build_argument, path.read_text(), str(path.relative_to(ROOT)))
 
     def test_apparmor_allows_only_required_runtime_surfaces(self) -> None:
         profile = (APP / "apparmor.txt").read_text()
