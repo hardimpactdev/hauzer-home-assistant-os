@@ -59,12 +59,18 @@ class PackagingTest(unittest.TestCase):
     def test_test_workflow_container_build_uses_manifest_version(self) -> None:
         config = yaml.safe_load((APP / "config.yaml").read_text())
         test_workflow = (ROOT / ".github/workflows/test.yaml").read_text()
+        dockerfile = (APP / "Dockerfile").read_text()
         build_argument = f"BUILD_VERSION={config['version']}"
 
         self.assertIn(
             build_argument,
             test_workflow,
             "container-smoke docker build must use the manifest version",
+        )
+        self.assertIn(
+            f"ARG {build_argument}",
+            dockerfile,
+            "Dockerfile ARG BUILD_VERSION default must match the manifest version",
         )
 
     def test_apparmor_allows_only_required_runtime_surfaces(self) -> None:
