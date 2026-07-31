@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Accept asynchronous HTTP 202 queued acknowledgements from the utility import API so exporter cursors advance after successful queueing.
+
 ## 0.1.2
 
 - Discover electricity import and grid export using safe directional signals.

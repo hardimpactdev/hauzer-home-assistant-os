@@ -3,6 +3,7 @@ import unittest
 from hauzer_utility_exporter.configuration import AppConfig
 from hauzer_utility_exporter.hauzer import (
     HauzerClient,
+    HauzerError,
     InvalidHauzerToken,
     InvalidImportPayload,
     RetryableHauzerError,
@@ -41,6 +42,51 @@ class HauzerClientTest(unittest.TestCase):
                 result = client.post_batch([{"metric": "electricity_consumption"}])
 
                 self.assertEqual((result.processed, result.created, result.updated), (4, 3, 1))
+
+    def test_queued_202_returns_accepted_reading_count_without_row_claims(self) -> None:
+        batch = [
+            {"metric": "electricity_consumption"},
+            {"metric": "gas_consumption"},
+        ]
+        client = HauzerClient(
+            app_config(),
+            transport=lambda *args: (
+                202,
+                {"status": "queued", "readings": 2},
+                {},
+            ),
+        )
+
+        result = client.post_batch(batch)
+
+        self.assertEqual(result.processed, 2)
+        self.assertEqual(result.created, 0)
+        self.assertEqual(result.updated, 0)
+
+    def test_malformed_or_mismatched_202_is_rejected(self) -> None:
+        batch = [{"metric": "electricity_consumption"}, {"metric": "gas_consumption"}]
+        cases = (
+            ({"status": "accepted", "readings": 2}, "invalid"),
+            ({"status": "queued"}, "invalid"),
+            ({"status": "queued", "readings": "2"}, "invalid"),
+            ({"status": "queued", "readings": 2.0}, "invalid"),
+            ({"status": "queued", "readings": True}, "invalid"),
+            ({"readings": 2}, "invalid"),
+            ({}, "invalid"),
+            (None, "invalid"),
+            ({"status": "queued", "readings": 1}, "mismatched"),
+            ({"status": "queued", "readings": 3}, "mismatched"),
+        )
+
+        for payload, expected_fragment in cases:
+            with self.subTest(payload=payload):
+                client = HauzerClient(
+                    app_config(),
+                    transport=lambda *args, body=payload: (202, body, {}),
+                )
+
+                with self.assertRaisesRegex(HauzerError, expected_fragment):
+                    client.post_batch(batch)
 
     def test_unauthorized_token_is_not_retried(self) -> None:
         calls = []

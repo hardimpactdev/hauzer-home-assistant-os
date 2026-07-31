@@ -18,7 +18,7 @@ class PackagingTest(unittest.TestCase):
         self.assertEqual(repository["url"], "https://hauzer.app")
         self.assertEqual(repository["maintainer"], "Hard Impact <support@hauzer.app>")
         self.assertEqual(config["slug"], "hauzer_utility_exporter")
-        self.assertEqual(config["version"], "0.1.2")
+        self.assertEqual(config["version"], "0.1.3")
         self.assertEqual(config["url"], "https://hauzer.app")
         self.assertEqual(config["image"], "ghcr.io/hardimpactdev/hauzer-home-assistant-os")
         self.assertEqual(config["arch"], ["aarch64", "amd64"])

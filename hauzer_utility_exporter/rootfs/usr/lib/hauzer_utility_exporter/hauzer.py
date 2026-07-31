@@ -117,7 +117,12 @@ class HauzerClient:
                     self._config.verify_tls,
                     REQUEST_TIMEOUT,
                 )
-                return self._classify(status, response, response_headers)
+                return self._classify(
+                    status,
+                    response,
+                    response_headers,
+                    submitted_count=len(readings),
+                )
             except RetryableHauzerError as error:
                 if attempt >= len(RETRY_DELAYS):
                     raise
@@ -139,6 +144,7 @@ class HauzerClient:
         status: int,
         response: object,
         headers: Mapping[str, str],
+        submitted_count: int,
     ) -> ImportResult:
         if status in {200, 201}:
             data = response if isinstance(response, dict) else {}
@@ -147,6 +153,8 @@ class HauzerClient:
                 created=int(data.get("created", 0)),
                 updated=int(data.get("updated", 0)),
             )
+        if status == 202:
+            return _queued_import_result(response, submitted_count)
         if status == 401:
             raise InvalidHauzerToken("Hauzer rejected the configured import token.")
         if status == 422:
@@ -159,6 +167,20 @@ class HauzerClient:
         if status >= 500:
             raise RetryableHauzerError("Hauzer is temporarily unavailable.")
         raise HauzerError(f"Hauzer rejected the import with HTTP status {status}.")
+
+
+def _queued_import_result(response: object, submitted_count: int) -> ImportResult:
+    data = response if isinstance(response, dict) else {}
+    if data.get("status") != "queued":
+        raise HauzerError("Hauzer returned an invalid queued import acknowledgement.")
+
+    readings_count = data.get("readings")
+    if not isinstance(readings_count, int) or isinstance(readings_count, bool):
+        raise HauzerError("Hauzer returned an invalid queued import acknowledgement.")
+    if readings_count != submitted_count:
+        raise HauzerError("Hauzer returned a mismatched queued import acknowledgement.")
+
+    return ImportResult(processed=readings_count, created=0, updated=0)
 
 
 def _retry_after(headers: Mapping[str, str]) -> Optional[float]:
