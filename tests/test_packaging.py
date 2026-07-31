@@ -18,7 +18,7 @@ class PackagingTest(unittest.TestCase):
         self.assertEqual(repository["url"], "https://hauzer.app")
         self.assertEqual(repository["maintainer"], "Hard Impact <support@hauzer.app>")
         self.assertEqual(config["slug"], "hauzer_utility_exporter")
-        self.assertEqual(config["version"], "0.1.2")
+        self.assertEqual(config["version"], "0.1.3")
         self.assertEqual(config["url"], "https://hauzer.app")
         self.assertEqual(config["image"], "ghcr.io/hardimpactdev/hauzer-home-assistant-os")
         self.assertEqual(config["arch"], ["aarch64", "amd64"])
@@ -55,6 +55,23 @@ class PackagingTest(unittest.TestCase):
 
         for path in (ROOT / "README.md", ROOT / "CONTRIBUTING.md"):
             self.assertIn(build_argument, path.read_text(), str(path.relative_to(ROOT)))
+
+    def test_test_workflow_container_build_uses_manifest_version(self) -> None:
+        config = yaml.safe_load((APP / "config.yaml").read_text())
+        test_workflow = (ROOT / ".github/workflows/test.yaml").read_text()
+        dockerfile = (APP / "Dockerfile").read_text()
+        build_argument = f"BUILD_VERSION={config['version']}"
+
+        self.assertIn(
+            build_argument,
+            test_workflow,
+            "container-smoke docker build must use the manifest version",
+        )
+        self.assertIn(
+            f"ARG {build_argument}",
+            dockerfile,
+            "Dockerfile ARG BUILD_VERSION default must match the manifest version",
+        )
 
     def test_apparmor_allows_only_required_runtime_surfaces(self) -> None:
         profile = (APP / "apparmor.txt").read_text()
