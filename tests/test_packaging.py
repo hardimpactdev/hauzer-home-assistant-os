@@ -56,6 +56,17 @@ class PackagingTest(unittest.TestCase):
         for path in (ROOT / "README.md", ROOT / "CONTRIBUTING.md"):
             self.assertIn(build_argument, path.read_text(), str(path.relative_to(ROOT)))
 
+    def test_test_workflow_container_build_uses_manifest_version(self) -> None:
+        config = yaml.safe_load((APP / "config.yaml").read_text())
+        test_workflow = (ROOT / ".github/workflows/test.yaml").read_text()
+        build_argument = f"BUILD_VERSION={config['version']}"
+
+        self.assertIn(
+            build_argument,
+            test_workflow,
+            "container-smoke docker build must use the manifest version",
+        )
+
     def test_apparmor_allows_only_required_runtime_surfaces(self) -> None:
         profile = (APP / "apparmor.txt").read_text()
         config = yaml.safe_load((APP / "config.yaml").read_text())
