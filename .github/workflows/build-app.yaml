@@ -33,7 +33,7 @@ jobs:
       # Pinned to the reviewed Home Assistant actions revision from 2026-07-15.
       - name: Read app information
         id: info
-        uses: home-assistant/actions/helpers/info@f4ca6f671bd429efb108c0f2fa0ae8af0215986c
+        uses: home-assistant/actions/helpers/info@58bff37c8947f690ace498be413a9b78d6f30f93
         with:
           path: ./${{ inputs.app }}
       - name: Normalize app information
