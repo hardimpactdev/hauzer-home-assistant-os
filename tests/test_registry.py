@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from threading import Event
 import unittest
 
-from websocket import WebSocketTimeoutException
+from websocket import WebSocketConnectionClosedException, WebSocketTimeoutException
 
 from hauzer_utility_exporter.discovery import DiscoveryResult
 from hauzer_utility_exporter.hauzer import HauzerClient
@@ -17,6 +17,7 @@ from hauzer_utility_exporter.home_assistant import (
     UnsupportedCommand,
 )
 from hauzer_utility_exporter.registry import (
+    RECONNECT_REFRESH_SECONDS,
     REFRESH_SECONDS,
     REGISTRY_EVENTS,
     REGISTRY_LIMITS,
@@ -295,6 +296,82 @@ class RegistrySyncTest(unittest.TestCase):
         self.sync()
         self.assertEqual(len(self.posts), 1)
 
+    def test_library_read_errors_retry_the_full_snapshot_immediately_after_reconnect(self) -> None:
+        for error_type in (WebSocketConnectionClosedException, WebSocketTimeoutException, OSError):
+            with self.subTest(error_type=error_type):
+                stop = Event()
+                sockets = []
+                self.posts.clear()
+
+                class Socket:
+                    def __init__(self):
+                        self.messages = [{"type": "auth_required"}]
+                        self.sent = []
+                        self.closed = False
+
+                    def settimeout(self, timeout):
+                        pass
+
+                    def send(self, raw):
+                        message = json.loads(raw)
+                        self.sent.append(message)
+                        if message["type"] == "auth":
+                            self.messages.append({"type": "auth_ok"})
+                        elif len(sockets) == 1 and message["type"] == "config/area_registry/list":
+                            self.messages.append(error_type("supervisor-secret"))
+                        else:
+                            self.messages.append({
+                                "type": "result", "id": message["id"], "success": True,
+                                "result": None if message["type"] == "subscribe_events" else [],
+                            })
+
+                    def recv(self):
+                        if self.messages:
+                            response = self.messages.pop(0)
+                            if isinstance(response, Exception):
+                                raise response
+                            return json.dumps(response)
+                        if worker._delivery is not None:
+                            worker._delivery.join(timeout=2)
+                        stop.set()
+                        raise WebSocketTimeoutException("idle")
+
+                    def close(self):
+                        self.closed = True
+
+                def socket_factory(*args):
+                    socket = Socket()
+                    sockets.append(socket)
+                    return socket
+
+                worker = RegistrySync(
+                    SupervisorWebSocket("supervisor-secret", socket_factory=socket_factory),
+                    self.hauzer,
+                    stop,
+                    logger=self.logger,
+                    clock=lambda: self.now,
+                )
+                stop.wait = lambda delay: False
+                with self.assertLogs(self.logger, level="WARNING") as captured:
+                    worker.run()
+                self.assertEqual(len(sockets), 2)
+                self.assertTrue(all(socket.closed for socket in sockets))
+                self.assertEqual(len(self.posts), 1)
+                self.assertEqual(
+                    [
+                        message["type"] for message in sockets[1].sent
+                        if message["type"].startswith("config/")
+                    ],
+                    [
+                        "config/floor_registry/list",
+                        "config/area_registry/list",
+                        "config/device_registry/list",
+                    ],
+                )
+                self.assertEqual(len(captured.output), 1)
+                self.assertNotIn("unexpectedly", " ".join(captured.output))
+                self.assertNotIn("supervisor-secret", " ".join(captured.output))
+
     def test_limits_log_warning_and_skip_entire_post(self) -> None:
         for registry, limit in REGISTRY_LIMITS.items():
             self.worker._schedule.refresh_at = self.now
@@ -333,9 +410,10 @@ class RegistrySyncTest(unittest.TestCase):
             self.assertNotIn("generated_at", output)
             self.assertEqual(len(calls), 1)
 
-    def test_reconnect_subscribes_without_resetting_snapshot_schedule(self) -> None:
+    def test_reconnect_without_events_posts_once_after_ten_second_debounce(self) -> None:
         stop = Event()
         connections = []
+        observations = []
         worker = self.worker
         session = self.session
         real_command = session.command
@@ -352,9 +430,14 @@ class RegistrySyncTest(unittest.TestCase):
             if worker._delivery is not None:
                 worker._delivery.join(timeout=2)
             if len(connections) == 1:
-                self.event("area_registry_updated")
                 raise HomeAssistantError("supervisor-secret")
-            stop.set()
+            observations.append((self.now, len(self.posts), worker._schedule.refresh_at))
+            if len(observations) == 1:
+                self.now += 9.99
+            elif len(observations) == 2:
+                self.now = 110.0
+            else:
+                stop.set()
 
         session.poll = poll
 
@@ -372,13 +455,86 @@ class RegistrySyncTest(unittest.TestCase):
         with self.assertLogs(self.logger, level="WARNING") as captured:
             worker.run()
         self.assertEqual(len(connections), 2)
-        self.assertEqual(len(self.posts), 1)
-        self.assertEqual(worker._schedule.change_at, self.now + 10)
+        self.assertEqual(len(self.posts), 2)
+        self.assertEqual(observations, [
+            (100.0, 1, 100.0 + REFRESH_SECONDS),
+            (109.99, 1, 100.0 + REFRESH_SECONDS),
+            (110.0, 2, 110.0 + REFRESH_SECONDS),
+        ])
         subscriptions = [
             call["event_type"] for call in session.calls if call["type"] == "subscribe_events"
         ]
         self.assertEqual(subscriptions, list(REGISTRY_EVENTS) * 2)
         self.assertNotIn("supervisor-secret", " ".join(captured.output))
+
+    def test_repeated_reconnects_share_one_refresh_within_the_five_minute_interval(self) -> None:
+        stop = Event()
+        connections = []
+        observations = []
+        worker = self.worker
+        session = self.session
+        command = session.command
+        session.command = lambda request: (
+            None if request["type"] == "subscribe_events" else command(request)
+        )
+
+        class WebSocket:
+            @contextmanager
+            def session(self, on_event):
+                connections.append(on_event)
+                yield session
+
+        def poll(timeout):
+            if worker._delivery is not None:
+                worker._delivery.join(timeout=2)
+            if len(connections) == 1:
+                raise HomeAssistantError("disconnected")
+            observations.append((len(connections), self.now, len(self.posts)))
+            if len(connections) == 2:
+                if self.now == 100:
+                    self.now = 110
+                else:
+                    self.now = 120
+                    raise HomeAssistantError("disconnected")
+            elif len(connections) == 3:
+                self.now = 200
+                raise HomeAssistantError("disconnected again")
+            elif self.now == 200:
+                self.now = 110 + RECONNECT_REFRESH_SECONDS - 0.01
+            elif self.now < 110 + RECONNECT_REFRESH_SECONDS:
+                self.now = 110 + RECONNECT_REFRESH_SECONDS
+            else:
+                stop.set()
+
+        session.poll = poll
+        worker._websocket = WebSocket()
+        worker._stop_event = stop
+        stop.wait = lambda delay: False
+        with self.assertLogs(self.logger, level="WARNING"):
+            worker.run()
+        self.assertEqual(observations, [
+            (2, 100, 1), (2, 110, 2), (3, 120, 2),
+            (4, 200, 2), (4, 409.99, 2), (4, 410, 3),
+        ])
+        self.assertEqual(len(self.posts), 3)
+
+    def test_registry_event_is_not_delayed_by_reconnect_debounce_or_cooldown(self) -> None:
+        self.sync()
+        self.event("area_registry_updated")
+        self.now += 5
+        self.worker._schedule.reconnected(self.now)
+        self.now += 5
+        self.sync()
+        self.assertEqual(len(self.posts), 2)
+
+        # The read above covered the reconnect and started its five-minute limit.
+        self.now += 1
+        self.worker._schedule.reconnected(self.now)
+        self.event("device_registry_updated")
+        self.now += 10
+        self.sync()
+        self.assertEqual(len(self.posts), 3)
+
 
     def test_repeated_websocket_failures_use_capped_reconnect_backoff(self) -> None:
         stop = Event()
@@ -470,10 +626,14 @@ class RegistrySyncTest(unittest.TestCase):
             if len(connections) == 2:
                 observations.append(len(calls) == 1)
                 observations.append(worker._delivery.is_alive())
+                self.now += 10
+                worker.sync_if_due(session)
+                observations.append(len(session.calls) == 3)
+                observations.append(worker._schedule.reconnect_at == self.now)
                 release_retry.set()
                 worker._delivery.join(timeout=2)
                 observations.append(not worker._delivery.is_alive())
-                # A further reconnect after failure must not start another attempt.
+                # Another reconnect debounces recovery without resetting retries.
                 raise HomeAssistantError("disconnected after retry")
             observations.append(len(calls) == 4)
             stop.set()
@@ -489,10 +649,11 @@ class RegistrySyncTest(unittest.TestCase):
                 if worker._delivery is not None:
                     worker._delivery.join(timeout=2)
         self.assertEqual(len(connections), 3)
-        self.assertEqual(observations, [True] * 9)
+        self.assertEqual(observations, [True] * 11)
         self.assertEqual(len(calls), 4)
         self.assertEqual(delays, [60, 60, 60])
         self.assertEqual(len(session.calls), 3)
+        self.assertEqual(schedule.reconnect_at, self.now + 10)
 
     def test_close_frame_from_poll_reconnects_without_json_parse_errors(self) -> None:
         stop = Event()

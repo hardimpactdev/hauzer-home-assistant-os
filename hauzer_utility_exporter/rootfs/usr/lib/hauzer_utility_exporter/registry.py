@@ -21,6 +21,7 @@ REGISTRY_EVENTS = (
 )
 DEBOUNCE_SECONDS = 10
 REFRESH_SECONDS = 24 * 60 * 60
+RECONNECT_REFRESH_SECONDS = 5 * 60
 RECONNECT_DELAYS = (1, 5, 15, 60)
 DEVICE_FIELDS = (
     "name_by_user",
@@ -109,14 +110,28 @@ class RegistrySchedule:
     def __init__(self, now: float) -> None:
         self.refresh_at = now
         self.change_at: Optional[float] = None
+        self.reconnect_at: Optional[float] = None
+        self._reconnect_allowed_at = now
 
     def changed(self, now: float) -> None:
         self.change_at = now + DEBOUNCE_SECONDS
 
+    def reconnected(self, now: float) -> None:
+        self.reconnect_at = max(now + DEBOUNCE_SECONDS, self._reconnect_allowed_at)
+
     def due(self, now: float) -> bool:
-        return now >= self.refresh_at or (self.change_at is not None and now >= self.change_at)
+        return (
+            now >= self.refresh_at
+            or (self.change_at is not None and now >= self.change_at)
+            or (self.reconnect_at is not None and now >= self.reconnect_at)
+        )
 
     def started(self, now: float) -> None:
+        # Any fresh read covers changes missed while disconnected, including a
+        # read triggered by an event or the daily refresh before reconnect_at.
+        if self.reconnect_at is not None:
+            self._reconnect_allowed_at = now + RECONNECT_REFRESH_SECONDS
+        self.reconnect_at = None
         self.refresh_at = now + REFRESH_SECONDS
         self.change_at = None
 
@@ -196,11 +211,15 @@ class RegistrySync(Thread):
 
     def run(self) -> None:
         failures = 0
+        connected = False
         while not self._stop_event.is_set():
             try:
                 with self._websocket.session(self._on_event) as session:
                     for event_type in REGISTRY_EVENTS:
                         session.command({"type": "subscribe_events", "event_type": event_type})
+                    if connected:
+                        self._schedule.reconnected(self._clock())
+                    connected = True
                     while not self._stop_event.is_set():
                         self.sync_if_due(session)
                         session.poll(1.0)

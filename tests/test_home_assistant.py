@@ -155,6 +155,25 @@ class HomeAssistantClientTest(unittest.TestCase):
 
 
 class RegistrySessionTest(unittest.TestCase):
+    def test_command_wraps_socket_errors_without_exposing_transport_details(self) -> None:
+        from websocket import WebSocketConnectionClosedException, WebSocketTimeoutException
+        from hauzer_utility_exporter.home_assistant import RegistrySession
+
+        for error_type in (OSError, WebSocketConnectionClosedException, WebSocketTimeoutException):
+            for method in ("settimeout", "send", "recv"):
+                with self.subTest(error_type=error_type, method=method):
+                    socket = FakeSocket([])
+                    socket.settimeout = lambda timeout: None
+
+                    def fail(*args):
+                        raise error_type("supervisor-secret transport details")
+
+                    setattr(socket, method, fail)
+                    session = RegistrySession(socket, lambda message: None)
+                    with self.assertRaisesRegex(HomeAssistantError, "request failed") as raised:
+                        session.command({"type": "config/area_registry/list"})
+                    self.assertNotIn("supervisor-secret", str(raised.exception))
+
     def test_poll_close_frame_raises_transport_error_without_json_error(self) -> None:
         from hauzer_utility_exporter.home_assistant import RegistrySession
 

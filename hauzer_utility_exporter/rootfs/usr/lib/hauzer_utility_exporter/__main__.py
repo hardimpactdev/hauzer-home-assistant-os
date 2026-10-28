@@ -89,7 +89,8 @@ def main() -> int:
         try:
             service.run_cycle(fixture_now or datetime.now(timezone.utc))
         except (HauzerError, HomeAssistantError, StateError) as error:
-            logger.error("Utility import cycle failed: %s", error)
+            if not stop_event.is_set():
+                logger.error("Utility import cycle failed: %s", error)
         except Exception:
             logger.error("Utility import cycle failed unexpectedly.")
 

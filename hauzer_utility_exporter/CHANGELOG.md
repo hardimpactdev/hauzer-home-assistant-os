@@ -9,6 +9,8 @@
 - Keep the Supervisor WebSocket serviced during slow registry posts and retries, and preserve delivery backoff and snapshot schedules across reconnects.
 - Interrupt retry waits on shutdown, map unknown device entry types to null, and reconnect cleanly on WebSocket close frames.
 - Update app and container descriptions to include areas and devices.
+- Retry full registry reads after socket errors and timeouts, and recover changes missed while disconnected with a debounced reconnect refresh, limited to once every five minutes.
+- Suppress utility delivery cancellation errors during shutdown and document exact snapshot retry and refresh timing.
 
 ## 0.1.3
 
