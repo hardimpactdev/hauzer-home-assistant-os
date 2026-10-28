@@ -174,6 +174,17 @@ class RegistrySessionTest(unittest.TestCase):
                         session.command({"type": "config/area_registry/list"})
                     self.assertNotIn("supervisor-secret", str(raised.exception))
 
+    def test_command_wraps_malformed_frames_as_transport_errors(self) -> None:
+        from hauzer_utility_exporter.home_assistant import RegistrySession
+
+        socket = FakeSocket([])
+        socket.settimeout = lambda timeout: None
+        socket.recv = lambda: "supervisor-secret {not json"
+        session = RegistrySession(socket, lambda message: None)
+        with self.assertRaisesRegex(HomeAssistantError, "request failed") as raised:
+            session.command({"type": "config/area_registry/list"})
+        self.assertNotIn("supervisor-secret", str(raised.exception))
+
     def test_poll_close_frame_raises_transport_error_without_json_error(self) -> None:
         from hauzer_utility_exporter.home_assistant import RegistrySession
 

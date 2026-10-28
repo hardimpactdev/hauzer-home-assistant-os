@@ -144,7 +144,7 @@ class RegistrySession:
                         )
                     raise HomeAssistantError("Home Assistant registry command failed.")
                 return message.get("result")
-        except (OSError, WebSocketException) as error:
+        except (OSError, ValueError, WebSocketException) as error:
             raise HomeAssistantError("Home Assistant registry WebSocket request failed.") from error
 
     def poll(self, timeout: float) -> None:

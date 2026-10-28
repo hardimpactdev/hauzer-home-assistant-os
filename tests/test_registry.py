@@ -436,6 +436,9 @@ class RegistrySyncTest(unittest.TestCase):
                 self.now += 9.99
             elif len(observations) == 2:
                 self.now = 110.0
+            elif len(observations) < 6:
+                # Keep polling after the refresh: it must not repeat.
+                self.now += 1.0
             else:
                 stop.set()
 
@@ -460,6 +463,9 @@ class RegistrySyncTest(unittest.TestCase):
             (100.0, 1, 100.0 + REFRESH_SECONDS),
             (109.99, 1, 100.0 + REFRESH_SECONDS),
             (110.0, 2, 110.0 + REFRESH_SECONDS),
+            (111.0, 2, 110.0 + REFRESH_SECONDS),
+            (112.0, 2, 110.0 + REFRESH_SECONDS),
+            (113.0, 2, 110.0 + REFRESH_SECONDS),
         ])
         subscriptions = [
             call["event_type"] for call in session.calls if call["type"] == "subscribe_events"
