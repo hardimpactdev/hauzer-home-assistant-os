@@ -102,7 +102,10 @@ class SupervisorWebSocket:
 
     @staticmethod
     def _receive(socket: object) -> dict[str, object]:
-        message = json.loads(socket.recv())
+        raw = socket.recv()
+        if raw == "":
+            raise HomeAssistantError("Home Assistant closed the WebSocket.")
+        message = json.loads(raw)
         if not isinstance(message, dict):
             raise HomeAssistantError("Home Assistant returned an invalid response.")
         return message

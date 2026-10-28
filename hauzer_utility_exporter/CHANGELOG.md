@@ -6,6 +6,9 @@
 - Include disabled and service devices; send no entities or states in registry snapshots.
 - Add `registry_sync`, enabled by default, with English and Dutch configuration descriptions.
 - Keep registry reads, delivery retries and reconnects separate from utility imports. Support older Home Assistant versions without floors, cap strings at 255 characters, and skip snapshots above Hauzer's registry limits.
+- Keep the Supervisor WebSocket serviced during slow registry posts and retries, and preserve delivery backoff and snapshot schedules across reconnects.
+- Interrupt retry waits on shutdown, map unknown device entry types to null, and reconnect cleanly on WebSocket close frames.
+- Update app and container descriptions to include areas and devices.
 
 ## 0.1.3
 

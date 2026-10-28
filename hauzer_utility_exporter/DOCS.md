@@ -36,11 +36,11 @@ The snapshot contains:
 - Areas: ID, name, floor ID, icon and aliases.
 - Devices: ID, name, user-assigned name, manufacturer, model, model ID, serial number, software and hardware versions, area ID, parent device ID, entry type, and whether the device is disabled.
 
-All devices are included, including disabled devices and service entries. If Home Assistant has no device name, the exporter uses its user-assigned name or its ID. No entities, states, device connections or integration identifiers are included. On older Home Assistant versions without a floor registry, floors are empty and area floor IDs are null.
+All devices are included, including disabled devices and service entries. Entry type is `service` for service devices and null for all other values. If Home Assistant has no device name, the exporter uses its user-assigned name or its ID. No entities, states, device connections or integration identifiers are included. On older Home Assistant versions without a floor registry, floors are empty and area floor IDs are null.
 
 Strings are truncated to 255 characters. If a snapshot exceeds 100 floors, 500 areas or 5,000 devices, the exporter logs a warning and skips the entire registry post. HTTP 401 and 422 failures log a safe authentication or validation reason without retrying. Network errors and server errors retry up to three times, waiting 1, 5 and 15 seconds. Rate limits honor bounded `Retry-After` guidance. A later registry change or daily refresh starts a new snapshot attempt.
 
-Registry sync runs in its own worker. Its reads, delivery errors and retry waits do not delay or stop the five-minute utility import loop. Set `registry_sync` to `false` and restart the app to disable registry sync.
+Registry sync runs in its own worker. Delivery runs separately, so the Supervisor WebSocket keeps receiving events and answering heartbeats during slow requests and retry waits. Only one snapshot is delivered at a time; changes received during delivery trigger a later snapshot. Reconnecting preserves the daily refresh and pending change schedule, as well as any delivery already in progress. A reconnect alone does not resend a snapshot. Shutdown interrupts retry waits. Its reads, delivery errors and retry waits do not delay or stop the five-minute utility import loop. Set `registry_sync` to `false` and restart the app to disable registry sync.
 
 ## Privacy and security
 

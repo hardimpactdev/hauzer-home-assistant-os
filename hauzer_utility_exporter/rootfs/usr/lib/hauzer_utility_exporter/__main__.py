@@ -66,6 +66,7 @@ def main() -> int:
         hauzer = HauzerClient(
             config,
             exporter_version=os.environ.get("HAUZER_EXPORTER_VERSION", "development"),
+            stop_event=stop_event,
         )
 
     service = ImportService(config, home_assistant, hauzer, STATE_PATH, logger=logger)

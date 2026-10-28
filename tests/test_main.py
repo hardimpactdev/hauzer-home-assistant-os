@@ -71,6 +71,9 @@ class MainTest(unittest.TestCase):
         registry_worker.return_value.start.assert_called_once()
         registry_worker.return_value.join.assert_called_once_with(timeout=2)
         self.assertTrue(registry_worker.call_args.args[2].is_set())
+        self.assertIs(
+            hauzer_client.call_args.kwargs["stop_event"], registry_worker.call_args.args[2]
+        )
 
     def test_registry_opt_out_does_not_start_worker_or_stop_imports(self) -> None:
         _, service, registry_worker = self.run_main(registry_sync=False)

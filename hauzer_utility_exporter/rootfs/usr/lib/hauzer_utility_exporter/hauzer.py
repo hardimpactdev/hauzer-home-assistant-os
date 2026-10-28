@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import json
 import math
 import ssl
-import time
+from threading import Event
 from collections.abc import Callable, Mapping
 from typing import Optional, TypeVar
 from urllib.parse import urlsplit, urlunsplit
@@ -87,12 +87,14 @@ class HauzerClient:
         config: AppConfig,
         exporter_version: str = "development",
         transport: Transport = _default_transport,
-        sleeper: Callable[[float], None] = time.sleep,
+        sleeper: Optional[Callable[[float], object]] = None,
+        stop_event: Optional[Event] = None,
     ) -> None:
         self._config = config
         self._exporter_version = exporter_version
         self._transport = transport
-        self._sleeper = sleeper
+        self._stop_event = stop_event or Event()
+        self._sleeper = sleeper or self._stop_event.wait
 
     def post_batch(self, readings: list[dict[str, object]]) -> ImportResult:
         return self._post(
@@ -137,6 +139,8 @@ class HauzerClient:
         }
 
         for attempt in range(len(RETRY_DELAYS) + 1):
+            if self._stop_event.is_set():
+                raise HauzerError("Hauzer delivery stopped.")
             retry_after = None
             try:
                 status, response, response_headers = self._transport(

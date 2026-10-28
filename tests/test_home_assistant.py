@@ -155,6 +155,17 @@ class HomeAssistantClientTest(unittest.TestCase):
 
 
 class RegistrySessionTest(unittest.TestCase):
+    def test_poll_close_frame_raises_transport_error_without_json_error(self) -> None:
+        from hauzer_utility_exporter.home_assistant import RegistrySession
+
+        socket = FakeSocket([])
+        socket.settimeout = lambda timeout: None
+        socket.recv = lambda: ""
+        session = RegistrySession(socket, lambda message: self.fail("No event expected"))
+        with self.assertRaisesRegex(HomeAssistantError, "closed the WebSocket") as raised:
+            session.poll(1)
+        self.assertIsNone(raised.exception.__context__)
+
     def test_registry_commands_and_subscriptions_share_authenticated_socket(self) -> None:
         socket = FakeSocket(
             [

@@ -15,11 +15,11 @@ RUN update-ca-certificates
 LABEL \
     io.hass.arch="${BUILD_ARCH}" \
     io.hass.name="Hauzer Utility Exporter" \
-    io.hass.description="Push Home Assistant utility statistics to Hauzer" \
+    io.hass.description="Push Home Assistant utility statistics, areas and devices to Hauzer" \
     io.hass.type="app" \
     io.hass.version="${BUILD_VERSION}" \
     org.opencontainers.image.title="Home Assistant App: Hauzer Utility Exporter" \
-    org.opencontainers.image.description="Push Home Assistant utility statistics to Hauzer" \
+    org.opencontainers.image.description="Push Home Assistant utility statistics, areas and devices to Hauzer" \
     org.opencontainers.image.source="https://github.com/hardimpactdev/hauzer-home-assistant-os" \
     org.opencontainers.image.url="https://hauzer.app" \
     org.opencontainers.image.version="${BUILD_VERSION}" \
