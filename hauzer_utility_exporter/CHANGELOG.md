@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- Push complete Home Assistant floor, area and device registry snapshots to Hauzer at startup, after registry changes (10-second debounce), and every 24 hours.
+- Include disabled and service devices; send no entities or states in registry snapshots.
+- Add `registry_sync`, enabled by default, with English and Dutch configuration descriptions.
+- Keep registry reads, delivery retries and reconnects separate from utility imports. Support older Home Assistant versions without floors, cap strings at 255 characters, and skip snapshots above Hauzer's registry limits.
+
 ## 0.1.3
 
 - Accept asynchronous HTTP 202 queued acknowledgements from the utility import API so exporter cursors advance after successful queueing.

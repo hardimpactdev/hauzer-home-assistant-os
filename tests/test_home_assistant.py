@@ -152,3 +152,78 @@ class HomeAssistantClientTest(unittest.TestCase):
             adapter.command({"type": "energy/get_prefs"})
 
         self.assertNotIn("supervisor-secret", str(raised.exception))
+
+
+class RegistrySessionTest(unittest.TestCase):
+    def test_registry_commands_and_subscriptions_share_authenticated_socket(self) -> None:
+        socket = FakeSocket(
+            [
+                {"type": "auth_required"},
+                {"type": "auth_ok"},
+                {"id": 1, "type": "result", "success": True, "result": None},
+                {"type": "event", "event": {"event_type": "area_registry_updated"}},
+                {"id": 2, "type": "result", "success": True, "result": []},
+                {"type": "event", "event": {"event_type": "device_registry_updated"}},
+            ]
+        )
+        socket.settimeout = lambda timeout: None
+        events = []
+        connections = []
+        adapter = SupervisorWebSocket(
+            "supervisor-secret", socket_factory=lambda *args: connections.append(args) or socket
+        )
+
+        with adapter.session(events.append) as session:
+            session.command({"type": "subscribe_events", "event_type": "area_registry_updated"})
+            self.assertEqual(session.command({"type": "config/area_registry/list"}), [])
+            session.poll(1)
+            self.assertFalse(socket.closed)
+
+        self.assertTrue(socket.closed)
+        self.assertEqual(len(connections), 1)
+        self.assertEqual(
+            [message["type"] for message in socket.sent],
+            ["auth", "subscribe_events", "config/area_registry/list"],
+        )
+        self.assertEqual(
+            [message["event"]["event_type"] for message in events],
+            ["area_registry_updated", "device_registry_updated"],
+        )
+
+    def test_unknown_floor_command_has_a_distinct_sanitized_error(self) -> None:
+        from hauzer_utility_exporter.home_assistant import UnsupportedCommand
+
+        socket = FakeSocket(
+            [
+                {"type": "auth_required"},
+                {"type": "auth_ok"},
+                {
+                    "id": 1,
+                    "type": "result",
+                    "success": False,
+                    "error": {"code": "unknown_command", "message": "supervisor-secret"},
+                },
+            ]
+        )
+        socket.settimeout = lambda timeout: None
+        adapter = SupervisorWebSocket("supervisor-secret", socket_factory=lambda *args: socket)
+        with self.assertRaises(UnsupportedCommand) as raised:
+            with adapter.session(lambda message: None) as session:
+                session.command({"type": "config/floor_registry/list"})
+        self.assertNotIn("supervisor-secret", str(raised.exception))
+        self.assertTrue(socket.closed)
+
+    def test_idle_timeout_keeps_the_subscription_connected(self) -> None:
+        from websocket import WebSocketTimeoutException
+        from hauzer_utility_exporter.home_assistant import RegistrySession
+
+        socket = FakeSocket([])
+        socket.settimeout = lambda timeout: None
+
+        def timeout():
+            raise WebSocketTimeoutException("timed out")
+
+        socket.recv = timeout
+        session = RegistrySession(socket, lambda message: self.fail("No event expected"))
+        session.poll(1)
+        self.assertFalse(socket.closed)

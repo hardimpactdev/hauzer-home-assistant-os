@@ -8,8 +8,13 @@ from threading import Event
 
 from hauzer_utility_exporter.configuration import AppConfig, ConfigurationError
 from hauzer_utility_exporter.hauzer import HauzerClient, HauzerError
-from hauzer_utility_exporter.home_assistant import HomeAssistantClient, HomeAssistantError
+from hauzer_utility_exporter.home_assistant import (
+    HomeAssistantClient,
+    HomeAssistantError,
+    SupervisorWebSocket,
+)
 from hauzer_utility_exporter.networking import install_host_override
+from hauzer_utility_exporter.registry import RegistrySync
 from hauzer_utility_exporter.service import ImportService
 from hauzer_utility_exporter.state import StateError
 
@@ -66,6 +71,19 @@ def main() -> int:
     service = ImportService(config, home_assistant, hauzer, STATE_PATH, logger=logger)
     run_once = os.environ.get("HAUZER_RUN_ONCE") == "1"
 
+    registry_worker = None
+    if config.registry_sync and not smoke_fixture_path:
+        try:
+            registry_worker = RegistrySync(
+                SupervisorWebSocket(config.supervisor_token),
+                hauzer,
+                stop_event,
+                logger=logger,
+            )
+            registry_worker.start()
+        except Exception:
+            logger.error("Registry sync could not start; utility imports will continue.")
+
     while not stop_event.is_set():
         try:
             service.run_cycle(fixture_now or datetime.now(timezone.utc))
@@ -78,6 +96,9 @@ def main() -> int:
             break
         stop_event.wait(RUN_INTERVAL_SECONDS)
 
+    stop_event.set()
+    if registry_worker is not None and registry_worker.is_alive():
+        registry_worker.join(timeout=2)
     return 0
 
 

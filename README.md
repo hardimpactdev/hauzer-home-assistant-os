@@ -1,6 +1,6 @@
 # Hauzer for Home Assistant
 
-Send electricity import/export, gas, and water statistics from Home Assistant OS to your Hauzer household.
+Send electricity import/export, gas, and water statistics plus floor, area and device registries from Home Assistant OS to your Hauzer household.
 
 [![Add Hauzer to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fhardimpactdev%2Fhauzer-home-assistant-os)
 
@@ -20,7 +20,7 @@ Send electricity import/export, gas, and water statistics from Home Assistant OS
 
 Automatic discovery uses the utility statistics configured in Home Assistant Energy. Endpoint, host, TLS, backfill, and statistic ID fields are advanced overrides; production users normally keep their defaults.
 
-Home Assistant credentials remain on the Home Assistant system. Only selected utility intervals and the exporter version are sent to Hauzer.
+Home Assistant credentials remain on the Home Assistant system. Selected utility intervals, the exporter version, and (by default) floor, area and device registries are sent to Hauzer. Registry snapshots contain no entities or states. Set `registry_sync` to `false` to send only utility readings.
 
 See [the app documentation](hauzer_utility_exporter/DOCS.md) for updates, troubleshooting, token rotation, and disconnecting.
 
@@ -28,7 +28,7 @@ See [the app documentation](hauzer_utility_exporter/DOCS.md) for updates, troubl
 
 ```bash
 PYTHONPATH=hauzer_utility_exporter/rootfs/usr/lib .venv/bin/python -m unittest discover -s tests -v
-docker build --build-arg BUILD_VERSION=0.1.3 -t hauzer-home-assistant-os:test hauzer_utility_exporter
+docker build --build-arg BUILD_VERSION=0.2.0 -t hauzer-home-assistant-os:test hauzer_utility_exporter
 HAUZER_TEST_IMAGE=hauzer-home-assistant-os:test PYTHONPATH=hauzer_utility_exporter/rootfs/usr/lib .venv/bin/python -m unittest tests.test_container_smoke -v
 ```
 

@@ -60,6 +60,7 @@ class AppConfig:
     initial_backfill_hours: int
     supervisor_token: str
     overrides: Mapping[Metric, tuple[str, ...]]
+    registry_sync: bool = True
 
     @classmethod
     def from_options(
@@ -72,6 +73,9 @@ class AppConfig:
         hauzer_host_ip = cls._read_host_ip(options)
         verify_tls = cls._read_verify_tls(options)
         initial_backfill_hours = cls._read_backfill(options)
+        registry_sync = options.get("registry_sync", True)
+        if not isinstance(registry_sync, bool):
+            raise ConfigurationError("The registry sync option must be true or false.")
 
         if not supervisor_token:
             raise ConfigurationError("A Supervisor token is required.")
@@ -89,6 +93,7 @@ class AppConfig:
             initial_backfill_hours=initial_backfill_hours,
             supervisor_token=supervisor_token,
             overrides=MappingProxyType(overrides),
+            registry_sync=registry_sync,
         )
 
     @staticmethod

@@ -92,7 +92,7 @@ class HauzerClientTest(unittest.TestCase):
         calls = []
         client = HauzerClient(
             app_config(),
-            transport=lambda *args: (calls.append(args) or (401, {}, {})),
+            transport=lambda *args: calls.append(args) or (401, {}, {}),
             sleeper=lambda delay: self.fail("401 must not sleep"),
         )
 
@@ -125,7 +125,7 @@ class HauzerClientTest(unittest.TestCase):
                 delays = []
                 client = HauzerClient(
                     app_config(),
-                    transport=lambda *args: (calls.append(args) or (status, {}, {})),
+                    transport=lambda *args: calls.append(args) or (status, {}, {}),
                     sleeper=delays.append,
                 )
 
@@ -158,14 +158,14 @@ class HauzerClientTest(unittest.TestCase):
         requests = []
         client = HauzerClient(
             app_config(),
-            exporter_version="0.1.0",
-            transport=lambda *args: (requests.append(args) or (200, {}, {})),
+            exporter_version="0.2.0",
+            transport=lambda *args: requests.append(args) or (200, {}, {}),
         )
 
         client.post_batch([])
 
-        self.assertEqual(requests[0][1]["X-Hauzer-Exporter-Version"], "0.1.0")
-        self.assertEqual(requests[0][1]["User-Agent"], "Hauzer-Utility-Exporter/0.1.0")
+        self.assertEqual(requests[0][1]["X-Hauzer-Exporter-Version"], "0.2.0")
+        self.assertEqual(requests[0][1]["User-Agent"], "Hauzer-Utility-Exporter/0.2.0")
 
     def test_rate_limit_retry_after_overrides_default_delays(self) -> None:
         delays = []
@@ -195,3 +195,94 @@ class HauzerClientTest(unittest.TestCase):
 
                 self.assertEqual(delays, [1, 5, 15])
                 self.assertNotIn(value, str(raised.exception))
+
+
+class RegistryDeliveryTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.snapshot = {
+            "source": "home_assistant",
+            "generated_at": "2026-10-28T18:00:00+00:00",
+            "floors": [],
+            "areas": [],
+            "devices": [],
+        }
+        self.acknowledgement = {"status": "queued", "floors": 0, "areas": 0, "devices": 0}
+
+    def test_registry_uses_same_origin_token_tls_and_version_headers(self) -> None:
+        import json
+
+        requests = []
+        client = HauzerClient(
+            app_config(),
+            exporter_version="0.2.0",
+            transport=lambda *args: requests.append(args) or (202, self.acknowledgement, {}),
+        )
+        self.assertIsNone(client.post_registry(self.snapshot))
+        url, headers, body, verify_tls, timeout = requests[0]
+        self.assertEqual(url, "https://hauzer.app/api/home-assistant/registry")
+        self.assertEqual(
+            headers,
+            {
+                "Authorization": f"Bearer {app_config().hauzer_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "X-Hauzer-Exporter-Version": "0.2.0",
+                "User-Agent": "Hauzer-Utility-Exporter/0.2.0",
+            },
+        )
+        self.assertEqual(json.loads(body), self.snapshot)
+        self.assertTrue(verify_tls)
+        self.assertEqual(timeout, 30)
+
+    def test_development_origin_and_port_are_preserved(self) -> None:
+        from dataclasses import replace
+
+        requests = []
+        client = HauzerClient(
+            replace(app_config(), hauzer_url="http://hauzer.example:8123/api/utility-imports"),
+            transport=lambda *args: requests.append(args) or (202, self.acknowledgement, {}),
+        )
+        client.post_registry(self.snapshot)
+        self.assertEqual(requests[0][0], "http://hauzer.example:8123/api/home-assistant/registry")
+
+    def test_server_and_network_failures_retry_with_bounded_backoff(self) -> None:
+        for failure in (500, 503, OSError("secret-network-detail")):
+            calls = []
+            delays = []
+
+            def transport(*args):
+                calls.append(args)
+                if isinstance(failure, Exception):
+                    raise failure
+                return failure, {}, {}
+
+            client = HauzerClient(app_config(), transport=transport, sleeper=delays.append)
+            with self.subTest(failure=failure), self.assertRaises(RetryableHauzerError) as raised:
+                client.post_registry(self.snapshot)
+            self.assertEqual(len(calls), 4)
+            self.assertEqual(delays, [1, 5, 15])
+            self.assertNotIn("secret-network-detail", str(raised.exception))
+
+    def test_transient_failure_can_recover_with_identical_full_snapshot(self) -> None:
+        requests = []
+        outcomes = [(503, {}, {}), (202, self.acknowledgement, {})]
+        delays = []
+        client = HauzerClient(
+            app_config(),
+            transport=lambda *args: requests.append(args) or outcomes.pop(0),
+            sleeper=delays.append,
+        )
+        client.post_registry(self.snapshot)
+        self.assertEqual(delays, [1])
+        self.assertEqual(requests[0][2], requests[1][2])
+
+    def test_malformed_queued_registry_counts_are_rejected(self) -> None:
+        for response in (
+            {},
+            {**self.acknowledgement, "floors": True},
+            {**self.acknowledgement, "areas": 1},
+            {**self.acknowledgement, "devices": "0"},
+        ):
+            client = HauzerClient(app_config(), transport=lambda *args: (202, response, {}))
+            with self.subTest(response=response), self.assertRaises(HauzerError):
+                client.post_registry(self.snapshot)

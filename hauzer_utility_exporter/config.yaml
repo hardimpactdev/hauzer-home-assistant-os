@@ -1,5 +1,5 @@
 name: Hauzer Utility Exporter
-version: "0.1.3"
+version: "0.2.0"
 slug: hauzer_utility_exporter
 description: Push Home Assistant utility statistics to Hauzer.
 url: https://hauzer.app
@@ -15,6 +15,7 @@ options:
   hauzer_token: ""
   hauzer_host_ip: ""
   verify_tls: true
+  registry_sync: true
   initial_backfill_hours: 168
   electricity_consumption_statistics: ""
   electricity_grid_export_statistics: ""
@@ -25,6 +26,7 @@ schema:
   hauzer_token: password
   hauzer_host_ip: str?
   verify_tls: bool
+  registry_sync: bool
   initial_backfill_hours: int(1,720)
   electricity_consumption_statistics: str?
   electricity_grid_export_statistics: str?

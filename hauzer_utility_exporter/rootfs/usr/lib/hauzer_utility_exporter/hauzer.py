@@ -4,11 +4,15 @@ import math
 import ssl
 import time
 from collections.abc import Callable, Mapping
-from typing import Optional
+from typing import Optional, TypeVar
+from urllib.parse import urlsplit, urlunsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from hauzer_utility_exporter.configuration import AppConfig
+
+
+T = TypeVar("T")
 
 
 RETRY_DELAYS = (1, 5, 15)
@@ -91,14 +95,39 @@ class HauzerClient:
         self._sleeper = sleeper
 
     def post_batch(self, readings: list[dict[str, object]]) -> ImportResult:
-        body = json.dumps(
-            {
-                "source": "home_assistant",
-                "period": "5minute",
-                "readings": readings,
-            },
-            separators=(",", ":"),
-        ).encode("utf-8")
+        return self._post(
+            self._config.hauzer_url,
+            {"source": "home_assistant", "period": "5minute", "readings": readings},
+            lambda status, response, headers: self._classify(
+                status,
+                response,
+                headers,
+                submitted_count=len(readings),
+            ),
+        )
+
+    def post_registry(self, snapshot: dict[str, object]) -> None:
+        endpoint = urlsplit(self._config.hauzer_url)
+        # hauzer_url is the utility endpoint; registry sync uses the same origin.
+        url = urlunsplit((endpoint.scheme, endpoint.netloc, "/api/home-assistant/registry", "", ""))
+        self._post(
+            url,
+            snapshot,
+            lambda status, response, headers: self._classify_registry(
+                status,
+                response,
+                headers,
+                snapshot,
+            ),
+        )
+
+    def _post(
+        self,
+        url: str,
+        payload: dict[str, object],
+        classify: Callable[[int, object, Mapping[str, str]], T],
+    ) -> T:
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         headers = {
             "Accept": "application/json",
             "Authorization": f"Bearer {self._config.hauzer_token}",
@@ -111,18 +140,13 @@ class HauzerClient:
             retry_after = None
             try:
                 status, response, response_headers = self._transport(
-                    self._config.hauzer_url,
+                    url,
                     headers,
                     body,
                     self._config.verify_tls,
                     REQUEST_TIMEOUT,
                 )
-                return self._classify(
-                    status,
-                    response,
-                    response_headers,
-                    submitted_count=len(readings),
-                )
+                return classify(status, response, response_headers)
             except RetryableHauzerError as error:
                 if attempt >= len(RETRY_DELAYS):
                     raise
@@ -138,6 +162,34 @@ class HauzerClient:
             )
 
         raise RetryableHauzerError("Hauzer is temporarily unavailable.")
+
+    @staticmethod
+    def _classify_registry(
+        status: int,
+        response: object,
+        headers: Mapping[str, str],
+        snapshot: dict[str, object],
+    ) -> None:
+        if status == 202:
+            data = response if isinstance(response, dict) else {}
+            if data.get("status") != "queued" or any(
+                type(data.get(registry)) is not int or data[registry] != len(snapshot[registry])
+                for registry in ("floors", "areas", "devices")
+            ):
+                raise HauzerError("Hauzer returned an invalid queued registry acknowledgement.")
+            return
+        if status == 401:
+            raise InvalidHauzerToken("Hauzer rejected the registry source token (HTTP 401).")
+        if status == 422:
+            raise InvalidImportPayload(
+                "Hauzer rejected the registry payload: validation failed (HTTP 422)."
+            )
+        if status == 429 or status >= 500:
+            raise RetryableHauzerError(
+                "Hauzer registry delivery is temporarily unavailable.",
+                retry_after=_retry_after(headers) if status == 429 else None,
+            )
+        raise HauzerError(f"Hauzer rejected the registry with HTTP status {status}.")
 
     @staticmethod
     def _classify(

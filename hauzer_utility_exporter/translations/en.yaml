@@ -8,6 +8,9 @@ configuration:
   hauzer_host_ip:
     name: Hauzer host IP
     description: "Advanced: optional host override for development environments."
+  registry_sync:
+    name: Sync Home Assistant registries
+    description: "Send floors, areas and all devices to Hauzer. Enabled by default; utility imports continue when disabled."
   verify_tls:
     name: Verify TLS
     description: "Advanced: verify the Hauzer server certificate. Keep enabled in production."

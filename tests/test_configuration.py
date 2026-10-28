@@ -94,6 +94,13 @@ class ConfigurationTest(unittest.TestCase):
                         "supervisor-secret",
                     )
 
+    def test_registry_sync_defaults_on_and_accepts_explicit_opt_out(self) -> None:
+        self.assertTrue(AppConfig.from_options(valid_options(), "supervisor-secret").registry_sync)
+        self.assertFalse(AppConfig.from_options(valid_options(registry_sync=False), "supervisor-secret").registry_sync)
+        for invalid in ("true", 1, None):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ConfigurationError, "registry sync"):
+                AppConfig.from_options(valid_options(registry_sync=invalid), "supervisor-secret")
+
     def test_verify_tls_must_be_boolean(self) -> None:
         with self.assertRaisesRegex(ConfigurationError, "TLS"):
             AppConfig.from_options(

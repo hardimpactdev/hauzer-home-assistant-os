@@ -8,6 +8,9 @@ configuration:
   hauzer_host_ip:
     name: IP-adres van Hauzer-host
     description: "Geavanceerd: optionele hostoverride voor ontwikkelomgevingen."
+  registry_sync:
+    name: Home Assistant-registers synchroniseren
+    description: "Stuur verdiepingen, ruimtes en alle apparaten naar Hauzer. Standaard aan; bij uitschakelen blijft de verbruiksimport werken."
   verify_tls:
     name: TLS verifiëren
     description: "Geavanceerd: controleer het servercertificaat van Hauzer. Laat dit aan in productie."
