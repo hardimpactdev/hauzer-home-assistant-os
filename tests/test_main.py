@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from hauzer_utility_exporter import __main__ as exporter_main
+from hauzer_utility_exporter.hauzer import HauzerError
 
 
 class MainTest(unittest.TestCase):
@@ -71,6 +72,9 @@ class MainTest(unittest.TestCase):
         registry_worker.return_value.start.assert_called_once()
         registry_worker.return_value.join.assert_called_once_with(timeout=2)
         self.assertTrue(registry_worker.call_args.args[2].is_set())
+        self.assertIs(
+            hauzer_client.call_args.kwargs["stop_event"], registry_worker.call_args.args[2]
+        )
 
     def test_registry_opt_out_does_not_start_worker_or_stop_imports(self) -> None:
         _, service, registry_worker = self.run_main(registry_sync=False)
@@ -91,3 +95,22 @@ class MainTest(unittest.TestCase):
         service.run_cycle.assert_called_once()
         registry_worker.return_value.start.assert_called_once()
         self.assertNotIn("supervisor-secret", " ".join(captured.output))
+
+    def test_stopped_utility_retry_does_not_log_an_error_during_shutdown(self) -> None:
+        stop_event = exporter_main.Event()
+
+        def stopped_retry(*args):
+            stop_event.set()
+            raise HauzerError("Hauzer delivery stopped.")
+
+        with (
+            patch.object(exporter_main, "Event", return_value=stop_event),
+            self.assertNoLogs("hauzer_utility_exporter", level="ERROR"),
+        ):
+            _, service, _ = self.run_main(import_error=stopped_retry)
+        service.run_cycle.assert_called_once()
+
+    def test_utility_error_is_still_logged_while_running(self) -> None:
+        with self.assertLogs("hauzer_utility_exporter", level="ERROR") as captured:
+            self.run_main(import_error=HauzerError("Hauzer delivery stopped."))
+        self.assertIn("Utility import cycle failed", " ".join(captured.output))

@@ -66,6 +66,7 @@ def main() -> int:
         hauzer = HauzerClient(
             config,
             exporter_version=os.environ.get("HAUZER_EXPORTER_VERSION", "development"),
+            stop_event=stop_event,
         )
 
     service = ImportService(config, home_assistant, hauzer, STATE_PATH, logger=logger)
@@ -88,7 +89,8 @@ def main() -> int:
         try:
             service.run_cycle(fixture_now or datetime.now(timezone.utc))
         except (HauzerError, HomeAssistantError, StateError) as error:
-            logger.error("Utility import cycle failed: %s", error)
+            if not stop_event.is_set():
+                logger.error("Utility import cycle failed: %s", error)
         except Exception:
             logger.error("Utility import cycle failed unexpectedly.")
 

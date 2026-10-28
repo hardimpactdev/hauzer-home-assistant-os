@@ -1,7 +1,7 @@
 name: Hauzer Utility Exporter
 version: "0.2.0"
 slug: hauzer_utility_exporter
-description: Push Home Assistant utility statistics to Hauzer.
+description: Push Home Assistant utility statistics, areas and devices to Hauzer.
 url: https://hauzer.app
 image: ghcr.io/hardimpactdev/hauzer-home-assistant-os
 arch:

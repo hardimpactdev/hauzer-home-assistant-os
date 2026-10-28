@@ -1,4 +1,5 @@
 import unittest
+from threading import Event, Thread
 
 from hauzer_utility_exporter.configuration import AppConfig
 from hauzer_utility_exporter.hauzer import (
@@ -27,6 +28,47 @@ def app_config() -> AppConfig:
 
 
 class HauzerClientTest(unittest.TestCase):
+    def test_shutdown_interrupts_retry_after_without_another_request(self) -> None:
+        for registry in (False, True):
+            with self.subTest(registry=registry):
+                stop = Event()
+                waiting = Event()
+                calls = []
+                errors = []
+                wait = stop.wait
+
+                def interruptible_wait(delay):
+                    self.assertEqual(delay, 300)
+                    waiting.set()
+                    return wait(delay)
+
+                stop.wait = interruptible_wait
+                client = HauzerClient(
+                    app_config(),
+                    transport=lambda *args: calls.append(args) or (429, {}, {"Retry-After": "300"}),
+                    stop_event=stop,
+                )
+
+                def deliver():
+                    try:
+                        if registry:
+                            client.post_registry({"floors": [], "areas": [], "devices": []})
+                        else:
+                            client.post_batch([])
+                    except HauzerError as error:
+                        errors.append(str(error))
+
+                worker = Thread(target=deliver, daemon=True)
+                worker.start()
+                try:
+                    self.assertTrue(waiting.wait(2))
+                finally:
+                    stop.set()
+                    worker.join(timeout=2)
+                self.assertFalse(worker.is_alive())
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(errors, ["Hauzer delivery stopped."])
+
     def test_success_statuses_return_import_counts(self) -> None:
         for status in (200, 201):
             with self.subTest(status=status):

@@ -4,7 +4,7 @@ import json
 from typing import Callable, Iterator, Optional
 from urllib.request import Request, urlopen
 
-from websocket import WebSocketTimeoutException
+from websocket import WebSocketException, WebSocketTimeoutException
 
 
 CORE_API_URL = "http://supervisor/core/api"
@@ -102,7 +102,10 @@ class SupervisorWebSocket:
 
     @staticmethod
     def _receive(socket: object) -> dict[str, object]:
-        message = json.loads(socket.recv())
+        raw = socket.recv()
+        if raw == "":
+            raise HomeAssistantError("Home Assistant closed the WebSocket.")
+        message = json.loads(raw)
         if not isinstance(message, dict):
             raise HomeAssistantError("Home Assistant returned an invalid response.")
         return message
@@ -123,23 +126,26 @@ class RegistrySession:
     def command(self, command: dict[str, object]) -> object:
         command_id = self._next_command_id
         self._next_command_id += 1
-        self._socket.settimeout(REQUEST_TIMEOUT)
-        SupervisorWebSocket._send(self._socket, {"id": command_id, **command})
-        while True:
-            message = SupervisorWebSocket._receive(self._socket)
-            if message.get("type") == "event":
-                self._on_event(message)
-                continue
-            if message.get("type") != "result" or message.get("id") != command_id:
-                raise HomeAssistantError("Home Assistant returned an invalid registry response.")
-            if message.get("success") is not True:
-                error = message.get("error", {})
-                if isinstance(error, dict) and error.get("code") == "unknown_command":
-                    raise UnsupportedCommand(
-                        "Home Assistant does not support this registry command."
-                    )
-                raise HomeAssistantError("Home Assistant registry command failed.")
-            return message.get("result")
+        try:
+            self._socket.settimeout(REQUEST_TIMEOUT)
+            SupervisorWebSocket._send(self._socket, {"id": command_id, **command})
+            while True:
+                message = SupervisorWebSocket._receive(self._socket)
+                if message.get("type") == "event":
+                    self._on_event(message)
+                    continue
+                if message.get("type") != "result" or message.get("id") != command_id:
+                    raise HomeAssistantError("Home Assistant returned an invalid registry response.")
+                if message.get("success") is not True:
+                    error = message.get("error", {})
+                    if isinstance(error, dict) and error.get("code") == "unknown_command":
+                        raise UnsupportedCommand(
+                            "Home Assistant does not support this registry command."
+                        )
+                    raise HomeAssistantError("Home Assistant registry command failed.")
+                return message.get("result")
+        except (OSError, ValueError, WebSocketException) as error:
+            raise HomeAssistantError("Home Assistant registry WebSocket request failed.") from error
 
     def poll(self, timeout: float) -> None:
         self._socket.settimeout(timeout)
