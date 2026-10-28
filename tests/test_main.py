@@ -9,10 +9,7 @@ from hauzer_utility_exporter import __main__ as exporter_main
 
 
 class MainTest(unittest.TestCase):
-    def test_import_cycle_runs_every_five_minutes(self) -> None:
-        self.assertEqual(exporter_main.RUN_INTERVAL_SECONDS, 5 * 60)
-
-    def test_main_passes_the_runtime_version_to_the_hauzer_client(self) -> None:
+    def run_main(self, registry_sync=True, registry_start_error=None, import_error=None):
         with TemporaryDirectory() as directory:
             options_path = Path(directory) / "options.json"
             options_path.write_text(
@@ -22,16 +19,18 @@ class MainTest(unittest.TestCase):
                         "hauzer_token": "hsr_" + "A" * 40,
                         "verify_tls": True,
                         "initial_backfill_hours": 24,
-                        "electricity_consumption_statistics": "",
-                        "electricity_grid_export_statistics": "",
-                        "gas_consumption_statistics": "",
-                        "water_consumption_statistics": "",
-                    },
+                        "registry_sync": registry_sync,
+                    }
                 ),
                 encoding="utf-8",
             )
             hauzer_client = Mock()
             service = Mock()
+            service.run_cycle.side_effect = import_error
+            registry_worker = Mock()
+            registry_worker.return_value.start.side_effect = registry_start_error
+            if registry_start_error:
+                registry_worker.return_value.is_alive.return_value = False
 
             with ExitStack() as stack:
                 stack.enter_context(patch.object(exporter_main, "OPTIONS_PATH", options_path))
@@ -40,6 +39,7 @@ class MainTest(unittest.TestCase):
                 )
                 stack.enter_context(patch.object(exporter_main, "install_host_override"))
                 stack.enter_context(patch.object(exporter_main, "HomeAssistantClient"))
+                stack.enter_context(patch.object(exporter_main, "RegistrySync", registry_worker))
                 stack.enter_context(patch.object(exporter_main, "HauzerClient", hauzer_client))
                 stack.enter_context(
                     patch.object(exporter_main, "ImportService", return_value=service),
@@ -50,14 +50,44 @@ class MainTest(unittest.TestCase):
                         exporter_main.os.environ,
                         {
                             "SUPERVISOR_TOKEN": "supervisor-secret",
-                            "HAUZER_EXPORTER_VERSION": "0.1.0",
+                            "HAUZER_EXPORTER_VERSION": "0.2.0",
                             "HAUZER_RUN_ONCE": "1",
                         },
                         clear=True,
-                    ),
+                    )
                 )
                 result = exporter_main.main()
 
             self.assertEqual(result, 0)
-            self.assertEqual(hauzer_client.call_args.kwargs["exporter_version"], "0.1.0")
-            service.run_cycle.assert_called_once()
+            return hauzer_client, service, registry_worker
+
+    def test_import_cycle_runs_every_five_minutes(self) -> None:
+        self.assertEqual(exporter_main.RUN_INTERVAL_SECONDS, 5 * 60)
+
+    def test_main_passes_runtime_version_and_starts_and_stops_registry_worker(self) -> None:
+        hauzer_client, service, registry_worker = self.run_main()
+        self.assertEqual(hauzer_client.call_args.kwargs["exporter_version"], "0.2.0")
+        service.run_cycle.assert_called_once()
+        registry_worker.return_value.start.assert_called_once()
+        registry_worker.return_value.join.assert_called_once_with(timeout=2)
+        self.assertTrue(registry_worker.call_args.args[2].is_set())
+
+    def test_registry_opt_out_does_not_start_worker_or_stop_imports(self) -> None:
+        _, service, registry_worker = self.run_main(registry_sync=False)
+        service.run_cycle.assert_called_once()
+        registry_worker.assert_not_called()
+
+    def test_registry_startup_failure_does_not_stop_utility_imports(self) -> None:
+        with self.assertLogs("hauzer_utility_exporter", level="ERROR") as captured:
+            _, service, _ = self.run_main(registry_start_error=RuntimeError("supervisor-secret"))
+        service.run_cycle.assert_called_once()
+        self.assertNotIn("supervisor-secret", " ".join(captured.output))
+
+    def test_utility_failure_does_not_stop_registry_worker(self) -> None:
+        with self.assertLogs("hauzer_utility_exporter", level="ERROR") as captured:
+            _, service, registry_worker = self.run_main(
+                import_error=RuntimeError("supervisor-secret")
+            )
+        service.run_cycle.assert_called_once()
+        registry_worker.return_value.start.assert_called_once()
+        self.assertNotIn("supervisor-secret", " ".join(captured.output))

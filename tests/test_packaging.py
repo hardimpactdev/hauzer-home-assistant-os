@@ -18,7 +18,7 @@ class PackagingTest(unittest.TestCase):
         self.assertEqual(repository["url"], "https://hauzer.app")
         self.assertEqual(repository["maintainer"], "Hard Impact <support@hauzer.app>")
         self.assertEqual(config["slug"], "hauzer_utility_exporter")
-        self.assertEqual(config["version"], "0.1.3")
+        self.assertEqual(config["version"], "0.2.0")
         self.assertEqual(config["url"], "https://hauzer.app")
         self.assertEqual(config["image"], "ghcr.io/hardimpactdev/hauzer-home-assistant-os")
         self.assertEqual(config["arch"], ["aarch64", "amd64"])
@@ -33,7 +33,15 @@ class PackagingTest(unittest.TestCase):
         self.assertEqual(config["schema"]["hauzer_token"], "password")
         self.assertEqual(config["schema"]["hauzer_host_ip"], "str?")
         self.assertTrue(config["options"]["verify_tls"])
+        self.assertTrue(config["options"]["registry_sync"])
+        self.assertEqual(config["schema"]["registry_sync"], "bool")
         self.assertEqual(config["options"]["initial_backfill_hours"], 168)
+
+    def test_registry_sync_option_has_english_and_dutch_translations(self) -> None:
+        for locale in ("en", "nl"):
+            translation = yaml.safe_load((APP / f"translations/{locale}.yaml").read_text())
+            self.assertTrue(translation["configuration"]["registry_sync"]["name"])
+            self.assertTrue(translation["configuration"]["registry_sync"]["description"])
 
     def test_runtime_uses_s6_and_current_app_labels(self) -> None:
         run_script = (APP / "rootfs/etc/services.d/hauzer-utility-exporter/run").read_text()
